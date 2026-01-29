@@ -22,6 +22,8 @@ class CarelevoAlarmDialog : DaggerDialogFragment() {
     private var content = ""
     private var alarmInfo: CarelevoAlarmInfo? = null
     private var primaryButton: Button? = null
+    private var muteButton: Button? = null
+    private var mute5minButton: Button? = null
 
     private var _binding: DialogCarelevoAlarmBinding? = null
     private val binding get() = _binding!!
@@ -73,11 +75,13 @@ class CarelevoAlarmDialog : DaggerDialogFragment() {
             }
             tvContent.isVisible = content.isNotBlank()
 
-            initButton(tvPrimaryButton, primaryButton)
+            initButton(tvPrimaryButton, primaryButton, isDismiss = true)
+            initButton(tvMute, muteButton)
+            initButton(tvMute5min, mute5minButton)
         }
     }
 
-    private fun initButton(view: TextView, button: Button?) {
+    private fun initButton(view: TextView, button: Button?, isDismiss: Boolean = false) {
         if (button == null) {
             view.visibility = View.GONE
             return
@@ -91,7 +95,7 @@ class CarelevoAlarmDialog : DaggerDialogFragment() {
             }
             setOnClickListener {
                 button.onClickListener?.invoke()
-                dismiss()
+                if (isDismiss) dismiss()
             }
             visibility = View.VISIBLE
         }
@@ -110,11 +114,15 @@ class CarelevoAlarmDialog : DaggerDialogFragment() {
         private var content = ""
         private var alarmInfo: CarelevoAlarmInfo? = null
         private var primaryButton: Button? = null
+        private var muteButton: Button? = null
+        private var mute5minButton: Button? = null
 
         fun setTitle(title: String) = apply { this.title = title }
         fun setContent(content: String) = apply { this.content = content }
         fun setAlarmInfo(alarmInfo: CarelevoAlarmInfo) = apply { this.alarmInfo = alarmInfo }
         fun setPrimaryButton(button: Button) = apply { this.primaryButton = button }
+        fun setMuteButton(button: Button) = apply { this.muteButton = button }
+        fun setMute5minButton(button: Button) = apply { this.mute5minButton = button }
 
         fun build(): CarelevoAlarmDialog {
             return CarelevoAlarmDialog().apply {
@@ -122,6 +130,8 @@ class CarelevoAlarmDialog : DaggerDialogFragment() {
                 this.content = this@Builder.content
                 this.alarmInfo = this@Builder.alarmInfo
                 this.primaryButton = this@Builder.primaryButton
+                this.muteButton = this@Builder.muteButton
+                this.mute5minButton = this@Builder.mute5minButton
             }
         }
     }

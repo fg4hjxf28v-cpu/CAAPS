@@ -20,7 +20,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.alarm.Carel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmCause
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.activities.CarelevoAlarmActivity
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.ext.transformNotificationStringResources
-import info.nightscout.androidaps.plugins.pump.carelevo.ui.ext.transformStringResources
+import info.nightscout.androidaps.plugins.pump.carelevo.ui.model.AlarmEvent
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
@@ -35,63 +35,65 @@ class CarelevoAlarmNotifier @Inject constructor(
 ) {
 
     private val disposables = CompositeDisposable()
+    private var onAlarmsUpdated: ((List<CarelevoAlarmInfo>) -> Unit)? = null
     private val channelId = "carelevo_alarm_channel"
 
     fun startObserving(
         onAlarmsUpdated: (List<CarelevoAlarmInfo>) -> Unit
     ) {
+        this.onAlarmsUpdated = onAlarmsUpdated
         createNotificationChannel()
+
         disposables += alarmActionHandler.observeAlarms()
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.main)
-            .subscribe({ alarms ->
-                           Log.d("AlarmObserver", "CarelevoAlarmNotifier observeAlarms: $alarms")
-                           if (isInForeground) {
-                               onAlarmsUpdated(alarms)
-                           } else {
-                               alarms.forEach { alarm ->
-                                   showNotification(alarm)
-                               }
-                           }
-                       }, { e ->
-                           Log.e("AlarmObserver", "observeAlarms error", e)
-                       })
+            .subscribe(
+                { alarms -> handleAlarmsInternal(alarms) },
+                { e -> Log.e("AlarmObserver", "observeAlarms error", e) }
+            )
     }
 
-    fun getAlarmsOnce(
-        includeUnacknowledged: Boolean = true,
-        onAlarmsLoaded: (List<CarelevoAlarmInfo>) -> Unit
-    ) {
-        disposables += alarmActionHandler
-            .getAlarmsOnce(includeUnacknowledged)
+    fun refreshAlarms(includeUnacknowledged: Boolean = false) {
+        disposables += alarmActionHandler.getAlarmsOnce(includeUnacknowledged)
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.main)
-            .subscribe({ alarms ->
-                           Log.d("AlarmObserver", "CarelevoAlarmNotifier getAlarmsOnce: $alarms")
-                           onAlarmsLoaded(alarms)
-                       }, { e ->
-                           Log.e("AlarmObserver", "getAlarmsOnce error", e)
-                       })
+            .subscribe(
+                { alarms -> handleAlarmsInternal(alarms) },
+                { e -> Log.e("AlarmObserver", "refreshAlarms error", e) }
+            )
+    }
+
+    private fun handleAlarmsInternal(alarms: List<CarelevoAlarmInfo>) {
+        Log.d("AlarmObserver", "handleAlarmsInternal: $alarms")
+
+        if (!isInForeground) {
+            alarms.forEach { alarm ->
+                showNotification(alarm)
+            }
+        }
+
+        onAlarmsUpdated?.invoke(alarms)
     }
 
     fun showTopNotification(alarms: List<CarelevoAlarmInfo>) {
-        val newAlarm = alarms.last()
-        val (titleRes, descRes, btnRes) = newAlarm.cause.transformStringResources()
+        alarms.forEach { newAlarm ->
+            val (titleRes, descRes, btnRes) = newAlarm.cause.transformNotificationStringResources()
 
-        val descArgs = buildDescArgsFor(newAlarm)
-        val desc = buildDescription(descRes, descArgs)
+            val descArgs = buildDescArgsFor(newAlarm)
+            val desc = buildDescription(descRes, descArgs)
 
-        uiInteraction.addNotificationWithAction(
-            id = app.aaps.core.interfaces.notifications.Notification.EOFLOW_PATCH_ALERTS + (newAlarm.alarmType.code * 1000) + (newAlarm.cause.code ?: 0),
-            text = context.getString(titleRes) + "\n" + HtmlCompat.fromHtml(desc, HtmlCompat.FROM_HTML_MODE_LEGACY),
-            level = app.aaps.core.interfaces.notifications.Notification.NORMAL,
-            buttonText = btnRes,
-            action = {
-                //viewModel.triggerEvent(AlarmEvent.ClearAlarm(info = alarm))
-            },
-            validityCheck = null,
-            soundId = app.aaps.core.ui.R.raw.error,
-        )
+            uiInteraction.addNotificationWithAction(
+                id = app.aaps.core.interfaces.notifications.Notification.CARELEVO_PATCH_ALERTS + (newAlarm.alarmType.code * 1000) + (newAlarm.cause.code ?: 0),
+                text = context.getString(titleRes) + "\n" + HtmlCompat.fromHtml(desc, HtmlCompat.FROM_HTML_MODE_LEGACY),
+                level = app.aaps.core.interfaces.notifications.Notification.NORMAL,
+                buttonText = btnRes,
+                action = {
+                    alarmActionHandler.triggerEvent(AlarmEvent.ClearAlarm(info = newAlarm))
+                },
+                validityCheck = null,
+                soundId = app.aaps.core.ui.R.raw.alarm,
+            )
+        }
     }
 
     fun stopObserving() {

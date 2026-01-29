@@ -19,6 +19,7 @@ import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.CarelevoBleSource
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.BleParams
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.BleState
@@ -83,6 +84,9 @@ class CarelevoBleMangerImpl @Inject constructor(
     private var tempAddress: String? = null
     private var disconnectedAddress: String? = null
 
+    @Volatile
+    private var isConnectingGatt = false
+
     private fun defaultBleState() = BleState(
         isEnabled = DeviceModuleState.DEVICE_NONE,
         isConnected = PeripheralConnectionState.CONN_STATE_NONE,
@@ -138,24 +142,15 @@ class CarelevoBleMangerImpl @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override fun isConnected(macAddress: String): Boolean {
-        if (!checkPermissions()) {
-            Log.d("ble_test", "[BleManagerImpl::isConnected] permission is not granted so return false")
-            return false
-        }
-        if (!isBluetoothEnabled()) {
-            Log.d("ble_test", "[BleManagerImpl::isConnected] bluetooth is not enabled so return false")
-            return false
-        }
+        if (!checkPermissions()) return false
+        if (!isBluetoothEnabled()) return false
 
         val device = btAdapter?.getRemoteDevice(macAddress.uppercase()) ?: return false
         val connectionState = btManager.getConnectionState(device, BluetoothProfile.GATT)
-
-        Log.d("ble_test", "[BleManagerImpl::isConnected] device : $device")
-        Log.d("ble_test", "[BleManagerImpl::isConnected] connectionState : $connectionState")
-
         val gattDevice = bluetoothGatt?.device ?: return false
+        val bleState = CarelevoBleSource.bluetoothState.value ?: return false
 
-        Log.d("ble_test", "[BleManagerImpl::isConnected] gattDevice : $gattDevice")
+        Log.d("isConnected", dumpBleConnectionState(macAddress.uppercase()))
 
         return connectionState == BluetoothProfile.STATE_CONNECTED && device == gattDevice
     }
@@ -333,7 +328,11 @@ class CarelevoBleMangerImpl @Inject constructor(
         }
 
         val result = runCatching {
-            val device = btAdapter?.getRemoteDevice(macAddress) ?: return@runCatching CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "Remote Device is not found.")
+            val device = btAdapter?.getRemoteDevice(macAddress)
+                ?: return@runCatching CommandResult.Failure(
+                    FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                    "Remote Device is not found."
+                )
 
             Log.d("ble_test", "[BleManagerImpl::connectTo] device : $device")
 
@@ -354,6 +353,7 @@ class CarelevoBleMangerImpl @Inject constructor(
                 CommandResult.Success(true)
             } ?: CommandResult.Success(false)
         }.getOrElse { e ->
+            isConnectingGatt = false
             e.printStackTrace()
             CommandResult.Error(e)
         }
@@ -373,6 +373,7 @@ class CarelevoBleMangerImpl @Inject constructor(
         }
 
         return bluetoothGatt?.run {
+            isConnectingGatt = false
             disconnect()
             close()
             bluetoothGatt = null
@@ -448,61 +449,131 @@ class CarelevoBleMangerImpl @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override fun writeCharacteristic(uuid: UUID, payload: ByteArray): CommandResult<Boolean> {
-        Log.d("deliverTreatment", "deliverTreatment: writeCharacteristic : $uuid, $payload")
-        if (btAdapter == null) {
+        val bleState = CarelevoBleSource.bluetoothState.value
+
+        if (bleState?.isServiceDiscovered != ServiceDiscoverState.DISCOVER_STATE_DISCOVERED) {
+            clearGatt()
+            disconnectedAddress?.let { address ->
+                stateScope.launch {
+                    delay(2_000L) // GATT close 이후 안정화 시간
+                    Log.d("ble_test", "[CarelevoBleMangerImpl::onConnectionStateChange] connectTo : $address")
+                    connectTo(address)
+                }
+            }
             return CommandResult.Failure(FailureState.FAILURE_RESOURCE_NOT_INITIALIZED, "bluetooth adapter is not initialized")
         }
-        if (!checkHasPermission()) {
-            return CommandResult.Failure(FailureState.FAILURE_PERMISSION_NOT_GRANTED, "permissions are not granted")
+
+        if (btAdapter == null) {
+            return CommandResult.Failure(
+                FailureState.FAILURE_RESOURCE_NOT_INITIALIZED,
+                "bluetooth adapter is not initialized"
+            )
         }
+
+        if (!checkHasPermission()) {
+            return CommandResult.Failure(
+                FailureState.FAILURE_PERMISSION_NOT_GRANTED,
+                "permissions are not granted"
+            )
+        }
+
         if (!isBluetoothEnabled()) {
-            return CommandResult.Failure(FailureState.FAILURE_BT_NOT_ENABLED, "bluetooth is not enabled")
+            return CommandResult.Failure(
+                FailureState.FAILURE_BT_NOT_ENABLED,
+                "bluetooth is not enabled"
+            )
+        }
+
+        if (isConnectingGatt) {
+            Log.w("ble_test", "Blocked write: reconnecting")
+            return CommandResult.Failure(
+                FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                "Reconnecting"
+            )
+        }
+
+        // ⭐ 1️⃣ gatt를 여기서 한 번만 고정
+        val gatt = bluetoothGatt
+            ?: return CommandResult.Failure(
+                FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                "BluetoothGatt is null"
+            )
+
+        // ⭐ 2️⃣ services 발견 여부는 대표 gatt 기준으로만 검사
+        if (gatt.services.isNullOrEmpty()) {
+            Log.e(
+                "ble_test",
+                "Blocked write: services not discovered yet gatt=${gatt.hashCode()}"
+            )
+            return CommandResult.Failure(
+                FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                "Services not discovered yet"
+            )
+        }
+
+        // ⭐ 3️⃣ stale gatt 방어 (중요)
+        if (gatt !== bluetoothGatt) {
+            Log.w(
+                "ble_test",
+                "Blocked write: stale gatt=${gatt.hashCode()} current=${bluetoothGatt?.hashCode()}"
+            )
+            return CommandResult.Failure(
+                FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                "Stale GATT"
+            )
         }
 
         val hexString = payload.convertToBytesToString()
-        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] 앱에서 패치로 보낸 데이터 : $hexString, $bluetoothGatt")
+        Log.d("ble_test", "[BleManagerImpl::writeCharacteristic] 앱에서 패치로 보낸 데이터 : $hexString, gatt=${gatt.hashCode()}")
 
-        return bluetoothGatt?.let { gatt ->
-            gatt.findCharacteristic(params.rxUUID)?.let { characteristicTarget ->
-                Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] characteristicTarget : $characteristicTarget")
-                val writeType = when {
-                    characteristicTarget.isWritable() -> {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritable")
-                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                    }
+        // ---- 이하 로직은 기존 그대로 ----
+        return gatt.findCharacteristic(params.rxUUID)?.let { characteristicTarget ->
+            Log.d("ble_test", "[BleManagerImpl::writeCharacteristic] characteristicTarget : $characteristicTarget")
+            Log.d("BLE_WRITE", "write RESULT success= gatt=${gatt.hashCode()}")
 
-                    characteristicTarget.isWritableWithoutResponse() -> {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritableWithoutResponse")
-                        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    }
-
-                    else -> {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] Characteristic target is not writeable")
-                        return CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "Characteristic target is not writeable")
-                    }
+            val writeType = when {
+                characteristicTarget.isWritable() -> {
+                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritable")
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                 }
-                Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] writeType : $writeType")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    if (gatt.writeCharacteristic(characteristicTarget, payload, writeType) == BluetoothStatusCodes.SUCCESS) {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] Success true")
-                        CommandResult.Success(true)
-                    } else {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] Success false")
-                        CommandResult.Success(false)
-                    }
+
+                characteristicTarget.isWritableWithoutResponse() -> {
+                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritableWithoutResponse")
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                }
+
+                else -> {
+                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] Characteristic target is not writeable")
+                    return CommandResult.Failure(
+                        FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+                        "Characteristic target is not writeable"
+                    )
+                }
+            }
+
+            Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] writeType : $writeType")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (gatt.writeCharacteristic(characteristicTarget, payload, writeType)
+                    == BluetoothStatusCodes.SUCCESS
+                ) {
+                    CommandResult.Success(true)
                 } else {
-                    characteristicTarget.writeType = writeType
-                    characteristicTarget.value = payload
-                    if (gatt.writeCharacteristic(characteristicTarget)) {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] else Success true")
-                        CommandResult.Success(true)
-                    } else {
-                        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] else Success false")
-                        CommandResult.Success(false)
-                    }
+                    CommandResult.Success(false)
                 }
-            } ?: CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "not found characteristic of ${params.rxUUID}")
-        } ?: CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "Bluetooth is not connected")
+            } else {
+                characteristicTarget.writeType = writeType
+                characteristicTarget.value = payload
+                if (gatt.writeCharacteristic(characteristicTarget)) {
+                    CommandResult.Success(true)
+                } else {
+                    CommandResult.Success(false)
+                }
+            }
+        } ?: CommandResult.Failure(
+            FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
+            "not found characteristic of ${params.rxUUID}"
+        )
     }
 
     @SuppressLint("MissingPermission")
@@ -540,6 +611,12 @@ class CarelevoBleMangerImpl @Inject constructor(
             return CommandResult.Failure(FailureState.FAILURE_BT_NOT_ENABLED, "bluetooth is not enabled")
         }
 
+        val gatt = bluetoothGatt ?: return CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "bluetooth is not connected")
+        if (gatt.services.isNullOrEmpty()) {
+            Log.e("ble_test", "[enabledNotifications] Blocked: services not discovered yet, gatt=${gatt.hashCode()}")
+            return CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "Services not discovered")
+        }
+
         return bluetoothGatt?.let { gatt ->
             gatt.findCharacteristic(params.txUuid)?.run {
                 getDescriptor(params.cccd)?.let { cccDescriptor ->
@@ -560,10 +637,10 @@ class CarelevoBleMangerImpl @Inject constructor(
                                 CommandResult.Success(false)
                             }
                         }
-                        val currentState = (CarelevoBleSource.bluetoothState.value ?: defaultBleState()).copy(
-                            isNotificationEnabled = if (success.data) NotificationState.NOTIFICATION_ENABLED else NotificationState.NOTIFICATION_DISABLED
-                        )
-                        CarelevoBleSource._bluetoothState.onNext(currentState)
+                        /*val currentState = (CarelevoBleSource.bluetoothState.value ?: defaultBleState()).copy(
+                            isNotificationEnabled = NotificationState.NOTIFICATION_ENABLED
+                        )*/
+                        //CarelevoBleSource._bluetoothState.onNext(currentState)
                         success
                     }
                 } ?: CommandResult.Failure(FailureState.FAILURE_COMMAND_NOT_EXECUTABLE, "not found descriptor ${params.cccd}")
@@ -672,6 +749,7 @@ class CarelevoBleMangerImpl @Inject constructor(
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
+            Log.w("ble_gatt_lifecycle", "deliverTreatment onConnectionStateChange gatt=${gatt?.hashCode()} status=$status newState=$newState services=${gatt?.services?.size}")
 
             var currentState: BleState? = CarelevoBleSource.bluetoothState.value?.copy()
             val bondState = gatt?.device?.bondState ?: -1
@@ -695,12 +773,9 @@ class CarelevoBleMangerImpl @Inject constructor(
 
                         gatt?.device?.createBond()
                         if (Build.VERSION.SDK_INT >= 34) {
-                            Log.d("deliverTreatment", "deliverTreatment: discoverServices")
                             gatt?.discoverServices()
                         } else {
-                            Log.d("deliverTreatment", "deliverTreatment: discoverServices: ${gatt?.getService(params.serviceUuid)}, ${isPeripheralRegistered}")
                             if ((gatt?.getService(params.serviceUuid) == null) && !isPeripheralRegistered) {
-                                Log.d("deliverTreatment", "deliverTreatment: discoverServices gatt: ${gatt?.device?.bondState}")
                                 if (gatt?.device?.bondState == BluetoothDevice.BOND_BONDED) {
                                     gatt.discoverServices()
                                 }
@@ -726,8 +801,15 @@ class CarelevoBleMangerImpl @Inject constructor(
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d("ble_test", "[CarelevoBleMangerImpl::onConnectionStateChange] status : $status")
                     disconnectedAddress = gatt?.device?.address
+                    isConnectingGatt = false
                     when (status) {
                         BluetoothGatt.GATT_SUCCESS -> {
+                            if (CarelevoBleSource._bluetoothState.value?.isEnabled != DeviceModuleState.DEVICE_STATE_ON) {
+                                gatt?.disconnect()
+                                gatt?.refresh()
+                                gatt?.close()
+                                bluetoothGatt = null
+                            }
                             currentState = (CarelevoBleSource.bluetoothState.value ?: defaultBleState()).copy(
                                 isConnected = PeripheralConnectionState.CONN_STATE_NONE,
                                 isBonded = BondingState.BOND_NONE,
@@ -738,7 +820,6 @@ class CarelevoBleMangerImpl @Inject constructor(
                         }
 
                         22 -> {
-
                             gatt?.close()
                             bluetoothGatt = null
 
@@ -750,11 +831,9 @@ class CarelevoBleMangerImpl @Inject constructor(
                             )
 
                             CarelevoBleSource._bluetoothState.onNext(nextState)
-                            Log.d("ble_test", "[CarelevoBleMangerImpl::onConnectionStateChange] disconnectedAddress : $disconnectedAddress")
                             disconnectedAddress?.let { address ->
                                 stateScope.launch {
-                                    delay(500) // GATT close 이후 안정화 시간
-                                    Log.d("ble_test", "[CarelevoBleMangerImpl::onConnectionStateChange] connectTo : $address")
+                                    delay(2_000L) // GATT close 이후 안정화 시간
                                     connectTo(address)
                                 }
                             }
@@ -782,36 +861,45 @@ class CarelevoBleMangerImpl @Inject constructor(
             }
         }
 
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            super.onServicesDiscovered(gatt, status)
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                Log.w("ble_test", "Service discovery failed")
+            if (status != BluetoothGatt.GATT_SUCCESS || gatt == null) return
+
+            Log.w("BLE_GATT", "onServicesDiscovered gatt=${gatt.hashCode()} status=$status services=${gatt.services.size}")
+
+            if (bluetoothGatt != null && bluetoothGatt !== gatt) {
+                Log.w("ble_test", "IGNORED onServicesDiscovered from stale gatt=${gatt.hashCode()}")
+                gatt.close()
                 return
             }
 
-            val currentState =
-                (CarelevoBleSource.bluetoothState.value ?: defaultBleState())
-                    .copy(isServiceDiscovered = ServiceDiscoverState.DISCOVER_STATE_DISCOVERED)
+            //bluetoothGatt = gatt
+            isConnectingGatt = false
+            Log.i("ble_test", "ACTIVE GATT confirmed gatt=${gatt.hashCode()}")
 
-            CarelevoBleSource._bluetoothState.onNext(currentState)
+            val nextState = (CarelevoBleSource.bluetoothState.value ?: defaultBleState())
+                .copy(isServiceDiscovered = ServiceDiscoverState.DISCOVER_STATE_DISCOVERED)
 
-            if (!isNotificationEnabled()) {
-                Log.d("ble_test", "Enable notification after service discovery")
-                enabledNotifications(params.txUuid)
-            }
+            CarelevoBleSource._bluetoothState.onNext(nextState)
+
+            enabledNotifications(params.txUuid)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             super.onCharacteristicChanged(gatt, characteristic, value)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Log.d("ble_test", "[CarelevoBleManagerImpl::onCharacteristicChanged] value : ${value.convertBytesToHex()}")
-                CarelevoBleSource._notifyIndicateBytes.onNext(
-                    CharacterResult(
-                        uuidCharacteristic = characteristic.uuid,
-                        value = value
-                    )
+            Log.d("ble_test", "[CarelevoBleManagerImpl::onCharacteristicChanged] value : ${value.convertBytesToHex()}")
+            CarelevoBleSource._notifyIndicateBytes.onNext(
+                CharacterResult(
+                    uuidCharacteristic = characteristic.uuid,
+                    value = value
                 )
-            }
+            )
+
+            CarelevoBleSource._bluetoothState.onNext(
+                (CarelevoBleSource.bluetoothState.value ?: defaultBleState()).copy(
+                    isNotificationEnabled = NotificationState.NOTIFICATION_ENABLED
+                )
+            )
         }
 
         @Suppress("DEPRECATION")
@@ -855,5 +943,77 @@ class CarelevoBleMangerImpl @Inject constructor(
             }
         }
 
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun dumpBleConnectionState(macAddress: String): String {
+        val sb = StringBuilder()
+
+        // 1. Bluetooth ON
+        sb.appendLine("1. Bluetooth enabled = ${isBluetoothEnabled()}")
+
+        // 2. Permission
+        sb.appendLine("2. Permission OK = ${checkPermissions()}")
+
+        // 3. GATT 연결 상태
+        val device = btAdapter?.getRemoteDevice(macAddress.uppercase())
+        val connState = device?.let {
+            btManager.getConnectionState(it, BluetoothProfile.GATT)
+        }
+        sb.appendLine("3. GATT connectionState = $connState (CONNECTED=2)")
+
+        // 4. bluetoothGatt 존재 여부
+        sb.appendLine("4. bluetoothGatt != null = ${bluetoothGatt != null}")
+
+        // 5. 같은 디바이스인지
+        sb.appendLine(
+            "5. gattDevice match = ${
+                bluetoothGatt?.device?.address == macAddress.uppercase()
+            }"
+        )
+
+        // 6. Service discovered
+        val bleState = CarelevoBleSource.bluetoothState.value
+        sb.appendLine(
+            "6. Service discovered = ${
+                bleState?.isServiceDiscovered == ServiceDiscoverState.DISCOVER_STATE_DISCOVERED
+            }"
+        )
+
+        // 7. Service 실제 개수
+        sb.appendLine(
+            "7. GATT services count = ${bluetoothGatt?.services?.size ?: 0}"
+        )
+
+        // 8. Notification enabled
+        sb.appendLine(
+            "8. Notification enabled = ${
+                bleState?.isNotificationEnabled == NotificationState.NOTIFICATION_ENABLED
+            }"
+        )
+
+        // 9. isConnectingGatt
+        sb.appendLine("9. isConnectingGatt = $isConnectingGatt")
+
+        return sb.toString()
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun forceBleResetAndReconnect(address: String) {
+        // 1. 현재 GATT 완전 종료
+        bluetoothGatt?.disconnect()
+        bluetoothGatt?.refresh()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
+
+        // 2. 상태 리셋
+        isConnectingGatt = false
+        CarelevoBleSource._bluetoothState.onNext(defaultBleState())
+
+        // 3. 약간 대기 후 재연결
+        stateScope.launch {
+            delay(1000)
+            connectTo(address)
+        }
     }
 }

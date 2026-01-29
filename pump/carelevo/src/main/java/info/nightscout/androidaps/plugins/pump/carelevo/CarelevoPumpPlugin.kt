@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpPluginBase
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.defs.fillFor
+import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
@@ -67,6 +68,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.common.model.PatchState
 import info.nightscout.androidaps.plugins.pump.carelevo.data.protocol.parser.CarelevoProtocolParserRegister
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.alarm.CarelevoAlarmInfo
+import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmCause
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmType.Companion.isCritical
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.alarm.CarelevoAlarmInfoUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoCancelTempBasalInfusionUseCase
@@ -178,6 +180,7 @@ class CarelevoPumpPlugin @Inject constructor(
     private val _pumpDescription = PumpDescription().fillFor(_pumpType)
     private var isImmeBolusStop = false
     private var isTryReconnected = false
+    private var tempBasalRunningSince: Long? = null
 
     @Inject @Named("characterTx") lateinit var txUuid: UUID
     private var reconnectDisposable = CompositeDisposable()
@@ -298,9 +301,7 @@ class CarelevoPumpPlugin @Inject constructor(
             }
         }
 
-        //startAlarmObserver()
-        //loadUnacknowledgedAlarms()
-
+        startAlarmObserver()
     }
 
     fun startAlarmObserver() {
@@ -309,35 +310,33 @@ class CarelevoPumpPlugin @Inject constructor(
         CoroutineScope(Dispatchers.Main).launch {
             ProcessLifecycleOwner.get().lifecycle.addObserver(
                 AppForegroundObserver {
-                    aapsLogger.debug(LTag.NOTIFICATION, "startAlarmObserving:: 백그라운드 전환 감지 1")
-                    carelevoAlarmNotifier.getAlarmsOnce { alarms ->
-                        aapsLogger.debug(LTag.NOTIFICATION, "startAlarmObserving:: 백그라운드 전환 감지 2: $alarms")
-                        handleAlarms(alarms)
-                    }
+                    aapsLogger.debug(LTag.NOTIFICATION, "Foreground 전환 → 알람 refresh")
+                    carelevoAlarmNotifier.refreshAlarms()
                 }
             )
         }
 
         carelevoAlarmNotifier.startObserving { alarms ->
-            aapsLogger.debug(LTag.NOTIFICATION, "startAlarmObserving:: alarm size : ${alarms.size}, $alarms")
+            aapsLogger.debug(LTag.NOTIFICATION, "observe alarms size=${alarms.size}, $alarms")
             handleAlarms(alarms)
         }
     }
 
-    private var lastHandledAlarmIds: Set<String> = emptySet()
     private fun handleAlarms(alarms: List<CarelevoAlarmInfo>) {
         aapsLogger.debug(LTag.NOTIFICATION, "startAlarmObserving handleAlarms:: $alarms")
         if (alarms.isEmpty()) return
 
-        val ids = alarms.map { it.alarmId }.toSet()
-        /*        if (ids == lastHandledAlarmIds) return
-                lastHandledAlarmIds = ids*/
-
-        if (alarms.any { it.alarmType.isCritical() }) {
+        if (
+            alarms.any {
+                it.alarmType.isCritical() ||
+                    it.cause == AlarmCause.ALARM_ALERT_BLUETOOTH_OFF
+            }
+        ) {
             carelevoAlarmNotifier.showAlarmScreen()
         } else {
             carelevoAlarmNotifier.showTopNotification(alarms)
         }
+
     }
 
     override fun onStop() {
@@ -631,17 +630,20 @@ class CarelevoPumpPlugin @Inject constructor(
                 }*/
     }
 
-    // 패치가 실제 연결 중 인지 확인
+    /* 패치가 실제 연결 중 인지 확인 */
     override fun isInitialized(): Boolean {
-        return carelevoPatch.isCarelevoConnected()
+        val address = carelevoPatch.patchInfo.value?.getOrNull()?.address?.uppercase()
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::isInitialized] address: $address")
+        if (address == null) {
+            return false
+        }
+        val isConnected = carelevoPatch.isBleConnectedNow(address)
+        return isConnected
     }
 
     override fun isSuspended(): Boolean {
-        val result = carelevoPatch.infusionInfo.value?.getOrNull()?.basalInfusionInfo?.isStop ?: false
-
         val patchState = carelevoPatch.getPatchState()
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::isSuspended] result: $patchState")
-
         return patchState == PatchState.NotConnectedBooted
     }
 
@@ -650,7 +652,6 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     override fun isConnected(): Boolean {
-        Log.d("ble_test", "isConnected called", Throwable("stacktrace"))
         val connected = carelevoPatch.isCarelevoConnected()
         val working = carelevoPatch.isWorking
 
@@ -663,8 +664,37 @@ class CarelevoPumpPlugin @Inject constructor(
             return false
         }
         val isConnected = carelevoPatch.isBleConnectedNow(address)
-        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::isConnected] isConnected: $isConnected")
+        Log.d("PUMP_STATE", "isConnected() -> $isConnected (thread=${Thread.currentThread().name})")
+
+        forceQueueClear()
         return isConnected
+    }
+
+    private fun forceQueueClear() {
+        val isTempBasalRunning = commandQueue.isRunning(Command.CommandType.TEMPBASAL)
+
+        if (isTempBasalRunning) {
+            if (tempBasalRunningSince == null) {
+                tempBasalRunningSince = System.currentTimeMillis()
+            } else {
+                val elapsed = System.currentTimeMillis() - tempBasalRunningSince!!
+
+                if (elapsed > 5 * 60 * 1000) { // 5분
+                    aapsLogger.error(LTag.PUMP, "TEMP BASAL stuck for ${elapsed / 1000}s → force reset")
+
+                    // 🔥 강제 복구
+                    commandQueue.resetPerforming()
+                    commandQueue.clear()
+
+                    // TEMP BASAL 무효화 (선택)
+                    // pumpSync.invalidateTemporaryBasalWithTempId(...)
+
+                    tempBasalRunningSince = null
+                }
+            }
+        } else {
+            tempBasalRunningSince = null
+        }
     }
 
     override fun isConnecting(): Boolean {
@@ -729,7 +759,7 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
-        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] setNewBasalProfile timezoneOrDSTChanged called")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] setNewBasalProfile timezoneOrDSTChanged called - ${carelevoPatch.getPatchState()}")
         _lastDateTime = System.currentTimeMillis()
         return when (carelevoPatch.getPatchState()) {
             is PatchState.ConnectedBooted -> {
@@ -873,7 +903,7 @@ class CarelevoPumpPlugin @Inject constructor(
                     volume = detailedBolusInfo.insulin
                 )
             )
-                .timeout(20, TimeUnit.SECONDS)
+                .timeout(30, TimeUnit.SECONDS)
                 .observeOn(aapsSchedulers.io)
                 .subscribeOn(aapsSchedulers.io)
                 .doOnSuccess { response -> handleBolusSuccess(response, detailedBolusInfo, result) }
@@ -896,7 +926,7 @@ class CarelevoPumpPlugin @Inject constructor(
         detailedInfo: DetailedBolusInfo,
         result: PumpEnactResult
     ) {
-        aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] Success: $detailedInfo")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] Success: $detailedInfo")
         if (response !is ResponseResult.Success) return
 
         val data = response.data as StartImmeBolusInfusionResponseModel
@@ -1372,7 +1402,6 @@ class CarelevoPumpPlugin @Inject constructor(
                         isTryReconnected = false
                         when (result) {
                             is CommandResult.Success -> {
-                                bleController.registerPeripheralInfo()
                                 aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startReconnect] connect success")
                             }
 
@@ -1394,6 +1423,7 @@ class CarelevoPumpPlugin @Inject constructor(
             carelevoPatch.btState
                 .subscribeOn(aapsSchedulers.io)
                 .observeOn(aapsSchedulers.io)
+                .distinctUntilChanged()
                 .timeout(10, TimeUnit.SECONDS)
                 .subscribe(
                     { btState ->

@@ -1,13 +1,17 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel
 
+import android.os.Handler
+import android.os.HandlerThread
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import info.nightscout.androidaps.plugins.pump.carelevo.R
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
@@ -20,7 +24,6 @@ import info.nightscout.androidaps.plugins.pump.carelevo.common.asEventFlow
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.alarm.CarelevoAlarmInfo
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmCause
-import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmType
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.alarm.AlarmClearPatchDiscardUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.alarm.AlarmClearRequestUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.alarm.CarelevoAlarmInfoUseCase
@@ -43,6 +46,7 @@ class CarelevoAlarmViewModel @Inject constructor(
     private val pumpSync: PumpSync,
     private val dateUtil: DateUtil,
     private val aapsLogger: AAPSLogger,
+    private val uiInteraction: UiInteraction,
     private val aapsSchedulers: AapsSchedulers,
     private val carelevoPatch: CarelevoPatch,
     private val bleController: CarelevoBleController,
@@ -71,6 +75,9 @@ class CarelevoAlarmViewModel @Inject constructor(
 
     private val patchAddress: String? = carelevoPatch.getPatchInfoAddress()  // 패치연결 종료시 초기화가 먼저 되고 ble를 끊기 때문에 미리 가지고 있는것
 
+    private val sound = app.aaps.core.ui.R.raw.error
+    private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
+
     private fun isPatchConnected(): Boolean {
         return carelevoPatch.isCarelevoConnected()
     }
@@ -79,9 +86,29 @@ class CarelevoAlarmViewModel @Inject constructor(
         return patchAddress
     }
 
+    private fun startAlarm(reason: String) {
+        if (sound != 0) uiInteraction.startAlarm(sound, reason)
+    }
+
+    private fun stopAlarm(reason: String) {
+        uiInteraction.stopAlarm(reason)
+    }
+
     fun triggerEvent(event: AlarmEvent) {
         when (event) {
-            is AlarmEvent.ClearAlarm -> startAlarmClearProcess(event.info)
+            is AlarmEvent.ClearAlarm -> {
+                stopAlarm("Confirm Click")
+                startAlarmClearProcess(event.info)
+            }
+
+            is AlarmEvent.Mute -> stopAlarm("Mute Click")
+
+            is AlarmEvent.Mute5min -> {
+                stopAlarm("Mute5min Click")
+                handler.postDelayed({ startAlarm("post") }, T.mins(5).msecs())
+            }
+
+            is AlarmEvent.StartAlarm -> startAlarm("start")
             else -> Unit
         }
     }
@@ -146,64 +173,11 @@ class CarelevoAlarmViewModel @Inject constructor(
                 }
             }
 
-            AlarmCause.ALARM_ALERT_RESUME_INSULIN_DELIVERY_TIMEOUT -> {
-                if (isPatchConnected()) {
-                    startAlarmClearRequestProcess(info)
-                    startInfusionResumeProcess(info) // 앱 미사용 주입 차단 시 Resume해주는 알람기능
-                } else {
-                    triggerEvent(AlarmEvent.ShowToastMessage(R.string.alarm_feat_msg_check_patch_connect))
-                }
-            }
-
-            AlarmCause.ALARM_ALERT_OUT_OF_INSULIN,
-            AlarmCause.ALARM_ALERT_PATCH_EXPIRED_PHASE_1,
-            AlarmCause.ALARM_ALERT_PATCH_EXPIRED_PHASE_2,
-            AlarmCause.ALARM_ALERT_APP_NO_USE,
-            AlarmCause.ALARM_ALERT_PATCH_APPLICATION_INCOMPLETE,
-            AlarmCause.ALARM_ALERT_LOW_BATTERY,
-            AlarmCause.ALARM_ALERT_INVALID_TEMPERATURE,
-            AlarmCause.ALARM_NOTICE_LOW_INSULIN,
-            AlarmCause.ALARM_NOTICE_PATCH_EXPIRED,
-            AlarmCause.ALARM_NOTICE_ATTACH_PATCH_CHECK -> {
-                if (isPatchConnected()) {
-                    startAlarmClearRequestProcess(info)
-                } else {
-                    startAlarmAlertAbnormalClearProcess(info, alarmCause)
-                }
-            }
-
-            AlarmCause.ALARM_ALERT_BLE_NOT_CONNECTED -> {
-                startAlarmAlertAbnormalClearProcess(info, alarmCause)
-            }
-
             AlarmCause.ALARM_ALERT_BLUETOOTH_OFF -> {
                 startAlarmAlertAbnormalClearProcess(info, alarmCause)
             }
 
-            AlarmCause.ALARM_NOTICE_BG_CHECK,
-            AlarmCause.ALARM_NOTICE_TIME_ZONE_CHANGED,
-            AlarmCause.ALARM_NOTICE_LGS_START,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_DISCONNECTED_PATCH_OR_CGM,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_PAUSE_LGS,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_TIME_OVER,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_OFF_LGS,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_HIGH_BG,
-            AlarmCause.ALARM_NOTICE_LGS_FINISHED_UNKNOWN,
-            AlarmCause.ALARM_NOTICE_LGS_NOT_WORKING -> {
-                //startAlarmUpdateProcess()
-            }
-
-            AlarmCause.ALARM_UNKNOWN -> {
-                if (alarmType == AlarmType.WARNING) {
-                    if (isPatchConnected()) {
-                        startAlarmClearPatchDiscardProcess(info)
-                    } else {
-                        startAlarmClearPatchForceQuitProcess()
-                    }
-                } else {
-                    //startAlarmUpdateProcess()
-                }
-            }
+            else -> Unit
         }
     }
 

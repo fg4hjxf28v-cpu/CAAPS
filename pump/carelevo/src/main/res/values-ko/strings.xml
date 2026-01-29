@@ -136,7 +136,7 @@
     <string name="carelevo_patch_needle_insertion_step1_desc">안전캡을 화살표 방향으로 90도 돌린 후 안전캡을 들어 제거해 주세요.</string>
     <string name="carelevo_patch_needle_insertion_step2_title">바늘 삽입</string>
     <string name="carelevo_patch_needle_insertion_step2_desc">어플리케이터의 푸시 버튼을 끝까지 눌러 바늘을 삽입해 주세요.\n정상적으로 바늘이 삽입되면 부저음이 발생합니다.\n확인 버튼을 눌러 주세요.</string>
-    <string name="carelevo_patch_needle_insertion_desc_warning">누르고 10초 유지하세요.</string>
+    <string name="carelevo_patch_needle_insertion_desc_warning">누른 상태로 10초간 유지하세요. 10초 후 부저음이 한 번 더 울립니다.</string>
 
     <string name="carelevo_dialog_patch_needle_check_title">바늘 삽입이 되지 않았나요?</string>
     <string name="carelevo_dialog_patch_needle_check_desc">어플리케이터 가운데 부분을 끝까지 눌러 바늘을 삽입해 주세요. 정상적으로 바늘이 삽입되면 부저음이 발생합니다.\n아래 [바늘 삽입 점검] 버튼을 눌러주세요.</string>

@@ -102,8 +102,25 @@ class CarelevoAlarmActivity : TranslatedDaggerAppCompatActivity() {
                     }
                 )
             )
+            .setMuteButton(
+                CarelevoAlarmDialog.Button(
+                    text = getString(app.aaps.core.ui.R.string.mute),
+                    onClickListener = {
+                        viewModel.triggerEvent(AlarmEvent.Mute)
+                    }
+                )
+            )
+            .setMute5minButton(
+                CarelevoAlarmDialog.Button(
+                    text = getString(app.aaps.core.ui.R.string.mute5min),
+                    onClickListener = {
+                        viewModel.triggerEvent(AlarmEvent.Mute5min)
+                    }
+                )
+            )
             .build()
             .show(supportFragmentManager, "")
+        viewModel.triggerEvent(AlarmEvent.StartAlarm)
     }
 
     private fun buildDescArgsFor(alarm: CarelevoAlarmInfo): List<String> = when (alarm.cause) {

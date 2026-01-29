@@ -6,13 +6,16 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventCustomActionsChanged
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
+import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.CarelevoBleSource
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.BleState
+import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.CommandResult
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.DeviceModuleState
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.isAvailable
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.isPeripheralConnected
@@ -49,8 +52,11 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetti
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.model.CarelevoUserSettingInfoRequestModel
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
+import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import io.reactivex.rxjava3.schedulers.Schedulers
 import io.reactivex.rxjava3.subjects.BehaviorSubject
 import java.time.LocalDateTime
 import java.util.Optional
@@ -80,6 +86,7 @@ class CarelevoPatch @Inject constructor(
 ) {
 
     private val bleDisposable = CompositeDisposable()
+    private var connectingDisposable: Disposable? = null
 
     private val infoDisposable = CompositeDisposable()
 
@@ -181,7 +188,6 @@ class CarelevoPatch @Inject constructor(
         }
 
         Log.d("patch_state", "[CarelevoPatchRx::getPatchState] result : $result")
-
         return result
     }
 
@@ -213,11 +219,33 @@ class CarelevoPatch @Inject constructor(
             when (result) {
                 is PatchState.NotConnectedNotBooting -> {
                     Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is no connection")
+                    rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
+                    rxBus.send(EventRefreshOverview("Carelevo connection state", true))
+                    rxBus.send(EventCustomActionsChanged())
+                    stopObservingConnection()
                 }
 
                 is PatchState.ConnectedBooted -> {
                     Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is ConnectedBooted")
                     rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED))
+                    rxBus.send(EventRefreshOverview("Carelevo connection state", true))
+                    rxBus.send(EventCustomActionsChanged())
+                    stopObservingConnection()
+                }
+
+                is PatchState.NotConnectedBooted -> {
+                    Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is NotConnectedBooted")
+                    rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
+                    connectingDisposable?.dispose()
+                    connectingDisposable = Observable.interval(0, 1, TimeUnit.SECONDS)
+                        .observeOn(aapsSchedulers.main)
+                        .takeUntil {
+                            // ⭐ 핵심 가드
+                            btState.getOrNull()?.isPeripheralConnected() == true || it > 60
+                        }
+                        .subscribe { n ->
+                            rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTING, n.toInt()))
+                        }
                 }
 
                 else -> {
@@ -240,6 +268,13 @@ class CarelevoPatch @Inject constructor(
             .subscribe {
                 Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] result : $it")
             }
+    }
+
+    private fun stopObservingConnection() {
+        if (connectingDisposable != null) {
+            connectingDisposable!!.dispose()
+            connectingDisposable = null
+        }
     }
 
     fun isBluetoothEnabled(): Boolean {
@@ -308,8 +343,11 @@ class CarelevoPatch @Inject constructor(
     }
 
     fun flushPatchInformation() {
+        //unBondDevice()
         bleController.clearGatt()
         bleController.unRegisterPeripheralInfo()
+        //_patchInfo.onNext(Optional.ofNullable(null))
+        //_infusionInfo.onNext(Optional.ofNullable(null))
     }
 
     private fun observePatch() {
@@ -332,6 +370,17 @@ class CarelevoPatch @Inject constructor(
             is RetrieveOperationInfoResultModel -> updateRemainAndRefreshInfusion(model)
             is InfusionInfoReportResultModel -> updateInfusionInfo(model)
         }
+    }
+
+    fun unBondDevice(): Single<Boolean> {
+        return Single
+            .fromCallable {
+                when (bleController.unBondDevice()) {
+                    is CommandResult.Success -> true
+                    else -> false
+                }
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     private fun updateRemainAndRefreshInfusion(model: RetrieveOperationInfoResultModel) {
