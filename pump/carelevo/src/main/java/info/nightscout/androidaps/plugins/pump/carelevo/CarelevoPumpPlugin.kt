@@ -1056,7 +1056,6 @@ class CarelevoPumpPlugin @Inject constructor(
                 { throwable ->
                     if (throwable is TimeoutException) {
                         aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::stopBolusDelivering] TIMEOUT (3000ms)")
-                        rxBus.send(EventForceStopConnecting())
                     } else {
                         aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::stopBolusDelivering] error : $throwable")
                     }
