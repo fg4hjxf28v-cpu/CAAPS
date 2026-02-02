@@ -50,6 +50,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetti
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.CarelevoUpdateMaxBolusDoseUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.CarelevoUserSettingInfoMonitorUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.model.CarelevoUserSettingInfoRequestModel
+import info.nightscout.androidaps.plugins.pump.carelevo.event.EventForceStopConnecting
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
@@ -193,6 +194,14 @@ class CarelevoPatch @Inject constructor(
 
     private fun observeChangeState() {
         Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] observeChangeState called")
+        bleDisposable += rxBus.toObservable(EventForceStopConnecting::class.java)
+            .observeOn(aapsSchedulers.main)
+            .subscribe {
+                Log.w("patch_test", "Force stop connectingDisposable")
+                connectingDisposable?.dispose()
+                connectingDisposable = null
+            }
+
         bleDisposable += BehaviorSubject.combineLatest(
             btState,
             patchInfo
@@ -235,12 +244,11 @@ class CarelevoPatch @Inject constructor(
 
                 is PatchState.NotConnectedBooted -> {
                     Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is NotConnectedBooted")
-                    rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
+
                     connectingDisposable?.dispose()
                     connectingDisposable = Observable.interval(0, 1, TimeUnit.SECONDS)
                         .observeOn(aapsSchedulers.main)
                         .takeUntil {
-                            // ⭐ 핵심 가드
                             btState.getOrNull()?.isPeripheralConnected() == true || it > 60
                         }
                         .subscribe { n ->

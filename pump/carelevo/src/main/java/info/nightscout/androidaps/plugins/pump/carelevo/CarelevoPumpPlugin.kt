@@ -97,6 +97,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetti
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.model.CarelevoPatchBuzzRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.model.CarelevoPatchExpiredThresholdModifyRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting.model.CarelevoUserSettingInfoRequestModel
+import info.nightscout.androidaps.plugins.pump.carelevo.event.EventForceStopConnecting
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.base.AppForegroundObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.fragments.CarelevoOverviewFragment
 import io.reactivex.rxjava3.core.Completable
@@ -683,12 +684,8 @@ class CarelevoPumpPlugin @Inject constructor(
                 if (elapsed > 5 * 60 * 1000) { // 5분
                     aapsLogger.error(LTag.PUMP, "TEMP BASAL stuck for ${elapsed / 1000}s → force reset")
 
-                    // 🔥 강제 복구
                     commandQueue.resetPerforming()
                     commandQueue.clear()
-
-                    // TEMP BASAL 무효화 (선택)
-                    // pumpSync.invalidateTemporaryBasalWithTempId(...)
 
                     tempBasalRunningSince = null
                 }
@@ -915,6 +912,7 @@ class CarelevoPumpPlugin @Inject constructor(
         } catch (e: Throwable) {
             aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] timeout or unexpected error: $e")
 
+            rxBus.send(EventForceStopConnecting())
             result.success = false
             result.enacted = false
             result.bolusDelivered = 0.0
@@ -1058,6 +1056,7 @@ class CarelevoPumpPlugin @Inject constructor(
                 { throwable ->
                     if (throwable is TimeoutException) {
                         aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::stopBolusDelivering] TIMEOUT (3000ms)")
+                        rxBus.send(EventForceStopConnecting())
                     } else {
                         aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::stopBolusDelivering] error : $throwable")
                     }
