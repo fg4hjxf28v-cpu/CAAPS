@@ -11,6 +11,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.ManufacturerType
 import app.aaps.core.data.pump.defs.PumpDescription
@@ -1034,6 +1035,14 @@ class CarelevoPumpPlugin @Inject constructor(
                             val result = response.data as CancelBolusInfusionResponseModel
                             aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::stopBolusDelivering] response success result : $result")
                             rxBus.send(EventOverviewBolusProgress(status = rh.gs(app.aaps.core.interfaces.R.string.bolus_delivered_successfully, result.infusedAmount.toFloat())))
+                            pumpSync.syncBolusWithPumpId(
+                                dateUtil.now(),
+                                result.infusedAmount,
+                                BS.Type.NORMAL,
+                                dateUtil.now(),
+                                PumpType.CAREMEDI_CARELEVO,
+                                serialNumber()
+                            )
                             isImmeBolusStop = true
                         }
 
