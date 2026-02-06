@@ -245,7 +245,7 @@ class CarelevoPatch @Inject constructor(
                 is PatchState.NotConnectedBooted -> {
                     Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is NotConnectedBooted")
 
-                    connectingDisposable?.dispose()
+                    /*connectingDisposable?.dispose()
                     connectingDisposable = Observable.interval(0, 1, TimeUnit.SECONDS)
                         .observeOn(aapsSchedulers.main)
                         .takeUntil {
@@ -253,7 +253,7 @@ class CarelevoPatch @Inject constructor(
                         }
                         .subscribe { n ->
                             rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTING, n.toInt()))
-                        }
+                        }*/
                 }
 
                 else -> {

@@ -23,6 +23,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel.CarelevoPat
 class CarelevoPatchStartFragment : CarelevoBaseFragment<FragmentCarelevoPatchStartBinding>(R.layout.fragment_carelevo_patch_start) {
 
     companion object {
+
         fun getInstance(): CarelevoPatchStartFragment = CarelevoPatchStartFragment()
     }
 
@@ -50,12 +51,12 @@ class CarelevoPatchStartFragment : CarelevoBaseFragment<FragmentCarelevoPatchSta
             }
 
             btnGuide.setOnClickListener {
-                InsulinRefillGuideDialog.Builder().build().show(parentFragmentManager, "InsulinRefillGuideDialog")
+                InsulinRefillGuideDialog.newInstance().show(parentFragmentManager, "InsulinRefillGuideDialog")
             }
         }
     }
 
-    private fun showNumberPickerDialog(){
+    private fun showNumberPickerDialog() {
         TenStepNumberPickerBottomSheet(
             initialValue = sharedViewModel.inputInsulin,
         ) { selected ->

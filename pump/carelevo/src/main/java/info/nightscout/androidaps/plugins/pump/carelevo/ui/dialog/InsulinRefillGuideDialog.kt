@@ -25,6 +25,10 @@ class InsulinRefillGuideDialog : BaseFullScreenDialog<DialogInsulinRefillGuideBi
         applyHangingIndent(tvStep3)
         applyHangingIndent(tvStep4)
         applyHangingIndent(tvStep5)
+        applyHangingIndent(tvStep6)
+        applyHangingIndent(tvStep7)
+        applyHangingIndent(tvStep8)
+        applyHangingIndent(tvStep9)
     }
 
     private fun applyHangingIndent(textView: TextView) {
@@ -52,8 +56,9 @@ class InsulinRefillGuideDialog : BaseFullScreenDialog<DialogInsulinRefillGuideBi
         textView.text = spannable
     }
 
-    class Builder {
+    companion object {
 
-        fun build(): InsulinRefillGuideDialog = InsulinRefillGuideDialog()
+        fun newInstance(): InsulinRefillGuideDialog =
+            InsulinRefillGuideDialog()
     }
 }
