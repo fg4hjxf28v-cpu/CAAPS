@@ -538,20 +538,16 @@ class CarelevoBleMangerImpl @Inject constructor(
                 }
 
                 characteristicTarget.isWritableWithoutResponse() -> {
-                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritableWithoutResponse")
                     BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                 }
 
                 else -> {
-                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] Characteristic target is not writeable")
                     return CommandResult.Failure(
                         FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
                         "Characteristic target is not writeable"
                     )
                 }
             }
-
-            Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] writeType : $writeType")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (gatt.writeCharacteristic(characteristicTarget, payload, writeType)

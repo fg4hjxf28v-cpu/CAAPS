@@ -29,6 +29,9 @@ class InsulinRefillGuideDialog : BaseFullScreenDialog<DialogInsulinRefillGuideBi
         applyHangingIndent(tvStep7)
         applyHangingIndent(tvStep8)
         applyHangingIndent(tvStep9)
+        applyHangingIndent(tvStep10)
+        applyHangingIndent(tvStep11)
+        applyHangingIndent(tvStep12)
     }
 
     private fun applyHangingIndent(textView: TextView) {

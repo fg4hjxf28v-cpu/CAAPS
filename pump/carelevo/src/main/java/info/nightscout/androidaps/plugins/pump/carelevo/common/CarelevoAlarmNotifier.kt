@@ -14,8 +14,10 @@ import androidx.core.text.HtmlCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import info.nightscout.androidaps.plugins.pump.carelevo.R
+import info.nightscout.androidaps.plugins.pump.carelevo.common.keys.CarelevoIntPreferenceKey
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.alarm.CarelevoAlarmInfo
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmCause
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.activities.CarelevoAlarmActivity
@@ -31,6 +33,7 @@ class CarelevoAlarmNotifier @Inject constructor(
     private val context: Context,
     private val aapsSchedulers: AapsSchedulers,
     private val uiInteraction: UiInteraction,
+    private val sp: SP,
     private val alarmActionHandler: CarelevoAlarmActionHandler
 ) {
 
@@ -81,7 +84,7 @@ class CarelevoAlarmNotifier @Inject constructor(
 
             val descArgs = buildDescArgsFor(newAlarm)
             val desc = buildDescription(descRes, descArgs)
-
+            Log.d("AlarmObserver", "showTopNotification titleRes: $titleRes, descRes: $descArgs, desc: $desc")
             uiInteraction.addNotificationWithAction(
                 id = app.aaps.core.interfaces.notifications.Notification.CARELEVO_PATCH_ALERTS + (newAlarm.alarmType.code * 1000) + (newAlarm.cause.code ?: 0),
                 text = context.getString(titleRes) + "\n" + HtmlCompat.fromHtml(desc, HtmlCompat.FROM_HTML_MODE_LEGACY),
@@ -90,8 +93,7 @@ class CarelevoAlarmNotifier @Inject constructor(
                 action = {
                     alarmActionHandler.triggerEvent(AlarmEvent.ClearAlarm(info = newAlarm))
                 },
-                validityCheck = null,
-                soundId = app.aaps.core.ui.R.raw.alarm,
+                validityCheck = null
             )
         }
     }
@@ -238,11 +240,14 @@ class CarelevoAlarmNotifier @Inject constructor(
     private fun buildDescArgsFor(alarm: CarelevoAlarmInfo): List<String> = when (alarm.cause) {
         AlarmCause.ALARM_NOTICE_LOW_INSULIN,
         AlarmCause.ALARM_ALERT_OUT_OF_INSULIN -> {
-            listOf((alarm.value ?: 0).toString())
+            val lowInsulinNoticeAmount = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_LOW_INSULIN_EXPIRATION_REMINDER_HOURS.key, 30)
+            listOf((lowInsulinNoticeAmount).toString())
         }
 
         AlarmCause.ALARM_NOTICE_PATCH_EXPIRED -> {
-            val totalHours = alarm.value ?: 0
+            val expiry = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_PATCH_EXPIRATION_REMINDER_HOURS.key, 116)
+            Log.d("AlarmObserver", "buildDescArgsFor: ${alarm.value}, expiry: $expiry")
+            val totalHours = expiry
             val (days, hours) = splitDaysAndHours(totalHours)
             listOf(days.toString(), hours.toString())
         }

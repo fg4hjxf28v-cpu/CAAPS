@@ -24,21 +24,17 @@ class CarelevoPatchCannulaInsertionConfirmUseCase @Inject constructor(
     fun execute() : Single<ResponseResult<CarelevoUseCaseResponse>> {
         return Single.fromCallable {
             runCatching {
-                patchRepository.requestConfirmCannulaInsertionCheck(true)
-                    .blockingGet()
-                    .takeIf { it is RequestResult.Pending }
+                val pending = patchRepository
+                    .requestConfirmCannulaInsertionCheck(true)
+                    .blockingGet() as? RequestResult.Pending
                     ?: throw IllegalStateException("request confirm cannula insertion is not pending")
 
-                val requestConfirmCannulaResult = patchObserver.patchEvent
-                    .ofType<CannulaInsertionAckResultModel>()
-                    .blockingFirst()
-
-                if(requestConfirmCannulaResult.result != Result.SUCCESS) {
-                    throw IllegalStateException("request confirm cannula insertion result is failed")
+                require(pending.data) {
+                    "request confirm cannula insertion result is failed"
                 }
 
                 val patchInfo = patchInfoRepository.getPatchInfoBySync()
-                    ?: throw NullPointerException("patch info must be not null")
+                    ?: throw IllegalStateException("patch info must be not null")
                 val updatePatchInfoResult = patchInfoRepository.updatePatchInfo(
                     patchInfo.copy(updatedAt = DateTime.now(), checkNeedle = true)
                 )
@@ -54,6 +50,6 @@ class CarelevoPatchCannulaInsertionConfirmUseCase @Inject constructor(
                     ResponseResult.Error(it)
                 }
             )
-        }.observeOn(Schedulers.io())
+        }.subscribeOn(Schedulers.io())
     }
 }

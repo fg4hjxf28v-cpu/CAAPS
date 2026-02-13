@@ -188,6 +188,7 @@ class CarelevoPumpPlugin @Inject constructor(
     private var isTryReconnected = false
     private var tempBasalRunningSince: Long? = null
     private var bolusExpectSec: Long = 0
+    private var lastProfileUpdateAttemptMs: Long = 0
 
     @Inject @Named("characterTx") lateinit var txUuid: UUID
     private var reconnectDisposable = CompositeDisposable()
@@ -774,8 +775,24 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     private fun startUpdateBasalProgram(profile: Profile): PumpEnactResult {
-        aapsLogger.debug("[CarelevoPumpPlugin::startUpdateBasalProgram]: $profile")
+        aapsLogger.debug("[CarelevoPumpPlugin::startUpdateBasalProgram] Start : $profile")
+
         val result = pumpEnactResultProvider.get()
+
+        val now = System.currentTimeMillis()
+        if (now - lastProfileUpdateAttemptMs < 30_000) {
+            uiInteraction.addNotificationValidFor(
+                Notification.FAILED_UPDATE_PROFILE,
+                rh.gs(R.string.carelevo_profile_update_skip_too_soon),
+                Notification.INFO,
+                10
+            )
+            return result
+                .success(true)
+                .enacted(false)
+                .comment(rh.gs(R.string.carelevo_profile_update_skip_comment))
+        }
+        lastProfileUpdateAttemptMs = now
 
         val infusionInfo = carelevoPatch.infusionInfo.value?.getOrNull()
         val response = cancelExtendedBolusRx(infusionInfo)
@@ -813,7 +830,7 @@ class CarelevoPumpPlugin @Inject constructor(
                     SetBasalProgramRequestModel(profile)
                 )
             }
-            .timeout(10, TimeUnit.SECONDS)
+            .timeout(20, TimeUnit.SECONDS)
             .onErrorReturn { e ->
                 ResponseResult.Error(e)
             }
@@ -834,9 +851,15 @@ class CarelevoPumpPlugin @Inject constructor(
                 result.success(true).enacted(true)
             }
 
+            is ResponseResult.Error -> {
+                aapsLogger.error(
+                    LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase FAILED - error=${response.e}", response.e)
+                result.success(true).enacted(false)
+            }
+
             else -> {
-                aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase Failed")
-                result.success(false).enacted(false)
+                aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase FAILED - unknown response=$response")
+                result.success(true).enacted(false)
             }
         }
     }
@@ -844,7 +867,11 @@ class CarelevoPumpPlugin @Inject constructor(
     private fun cancelExtendedBolusRx(infusionInfo: CarelevoInfusionInfoDomainModel?): Single<PumpEnactResult> {
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelExtendedBolusRx infusionInfo: $infusionInfo")
         return if (infusionInfo?.extendBolusInfusionInfo != null) {
-            Single.just(cancelExtendedBolus())
+            Single.fromCallable { cancelExtendedBolus() }
+                .onErrorReturn {
+                    aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it)
+                    pumpEnactResultProvider.get().success(false)
+                }
         } else {
             Single.just(pumpEnactResultProvider.get().success(true).enacted(false))
         }
@@ -853,7 +880,11 @@ class CarelevoPumpPlugin @Inject constructor(
     private fun cancelTempBasalRx(infusionInfo: CarelevoInfusionInfoDomainModel?): Single<PumpEnactResult> {
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasalRx infusionInfo: $infusionInfo")
         return if (infusionInfo?.tempBasalInfusionInfo != null) {
-            Single.just(cancelTempBasal(true))
+            Single.fromCallable { cancelTempBasal(true)}
+                .onErrorReturn {
+                    aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it)
+                    pumpEnactResultProvider.get().success(false)
+                }
         } else {
             Single.just(pumpEnactResultProvider.get().success(true).enacted(false))
         }

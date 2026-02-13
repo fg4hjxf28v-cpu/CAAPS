@@ -126,7 +126,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
 
         setUiState(UiState.Loading)
         compositeDisposable += patchNeedleInsertionCheckUseCase.execute()
-            .timeout(20, TimeUnit.SECONDS)
+            .timeout(30, TimeUnit.SECONDS)
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnError {
@@ -176,10 +176,11 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
         carelevoPatch.profile.value?.getOrNull()?.let { profile ->
             setUiState(UiState.Loading)
             compositeDisposable += setBasalProgramUseCase.execute(SetBasalProgramRequestModel(profile))
-                .timeout(10000L, TimeUnit.MILLISECONDS)
+                .timeout(15000L, TimeUnit.MILLISECONDS)
                 .observeOn(aapsSchedulers.io)
                 .subscribeOn(aapsSchedulers.io)
                 .doOnError {
+                    Log.e("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response timeout")
                     setUiState(UiState.Idle)
                     triggerEvent(CarelevoConnectNeedleEvent.SetBasalFailed)
                 }.subscribe { response ->

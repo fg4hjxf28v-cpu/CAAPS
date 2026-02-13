@@ -81,16 +81,19 @@
     <string name="patch_prepare_dialog_title_insulin_amount">Select filled amount.</string>
     <string name="patch_prepare_dialog_msg_insulin_range">Range : 50 ~ 300 U</string>
 
-    <string name="carelevo_insulin_refill_guide_title">Insulin Refill Guide</string>
-    <string name="carelevo_insulin_refill_step1">1. Pull the syringe plunger to draw approximately 2 mL of air into the syringe.</string>
-    <string name="carelevo_insulin_refill_step2">2. Insert the air-filled syringe into the insulin vial and inject the air into the vial.</string>
-    <string name="carelevo_insulin_refill_step3">3. While keeping the syringe inserted, turn the insulin vial and syringe upside down and use the pressure to draw approximately 2 mL of insulin into the syringe.</string>
-    <string name="carelevo_insulin_refill_step4">4. Insert the syringe needle vertically and fully into the patch’s insulin inlet (①) until it touches the bottom, then pull the syringe plunger all the way up and release it. Remove the syringe from the insulin inlet.</string>
-    <string name="carelevo_insulin_refill_step5">5. Hold the syringe upright after removing it from the patch, then gently tap the side to allow all air bubbles to rise to the top.</string>
-    <string name="carelevo_insulin_refill_step6">6. Insert the needle into the insulin vial, allow all air in the syringe to enter the vial, then draw additional insulin into the syringe equal to the amount needed for the patch usage period.</string>
-    <string name="carelevo_insulin_refill_step7">7. After removing the syringe from the vial, if air bubbles are present, hold the syringe upright and gently tap the side to move the air bubbles to the top and remove all air from the syringe.</string>
-    <string name="carelevo_insulin_refill_step8">8. Carefully adjust the insulin volume by aligning the top edge of the plunger with the desired dosage marking.</string>
-    <string name="carelevo_insulin_refill_step9">9. Insert the syringe needle vertically and fully into the patch’s insulin inlet (①) until it touches the bottom, then slowly push the plunger to inject all insulin from the syringe into the patch.</string>
+    <string name="carelevo_insulin_refill_guide_title">Patch Insulin Filling Guide</string>
+    <string name="carelevo_insulin_refill_step1">1. Peel off the backing paper from the patch blister.</string>
+    <string name="carelevo_insulin_refill_step2">2. Disinfect the rubber cap of the insulin vial using an alcohol swab.</string>
+    <string name="carelevo_insulin_refill_step3">3. Remove the needle protection cap of the insulin syringe by pulling it straight off.</string>
+    <string name="carelevo_insulin_refill_step4">4. Pull back the syringe plunger to fill it with approximately 2 mL of air.</string>
+    <string name="carelevo_insulin_refill_step5">5. Insert the air-filled syringe into the insulin vial and inject the air into the vial.</string>
+    <string name="carelevo_insulin_refill_step6">6. With the syringe still inserted, flip both the vial and syringe upside down, and use the pressure to fill the syringe with approximately 2 mL of insulin.</string>
+    <string name="carelevo_insulin_refill_step7">7. Insert the syringe needle vertically into the patch\'s insulin fill port (①) until it reaches the bottom. Pull the plunger all the way up, then release it. Remove the syringe from the fill port.</string>
+    <string name="carelevo_insulin_refill_step8">8. Hold the syringe upright and tap the side gently to collect all air bubbles at the top.</string>
+    <string name="carelevo_insulin_refill_step9">9. Insert the needle back into the insulin vial, push all the air into the vial, and then draw the specific amount of insulin you will use for the duration of the patch.</string>
+    <string name="carelevo_insulin_refill_step10">10. Remove the syringe from the vial. If air bubbles are present, hold the syringe upright, tap the side to move bubbles to the top, and expel all air from the syringe.</string>
+    <string name="carelevo_insulin_refill_step11">11. Align the top of the plunger with the scale mark to precisely adjust the insulin dose.</string>
+    <string name="carelevo_insulin_refill_step12">12. Insert the needle vertically into the patch\s insulin fill port (①) until it reaches the bottom, and slowly push the plunger to inject all the insulin into the patch.</string>
 
     <string name="carelevo_connect_prepare_title">Patch Started</string>
     <string name="carelevo_connect_patch_title">Connect Patch</string>
@@ -326,5 +329,8 @@
     <string name="alarm_notification_desc_notice_lgs_ended_high_bg">LGS ended because CGM level exceeded the set threshold.</string>
     <string name="alarm_notification_desc_notice_lgs_ended_unknown">LGS ended due to an unknown reason.</string>
     <string name="alarm_notification_desc_notice_lgs_error">Please check patch and CGM connection.</string>
+
+    <string name="carelevo_profile_update_skip_too_soon">Profile update skipped: wait at least 30 seconds.</string>
+    <string name="carelevo_profile_update_skip_comment">Skipped: update too soon.</string>
 
 </resources>

@@ -7,7 +7,6 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.util.Log
 import java.util.UUID
 
 @SuppressLint("MissingPermission")
@@ -40,9 +39,7 @@ internal fun BluetoothDevice.removeBond(): Boolean {
 }
 
 internal fun BluetoothGatt.findCharacteristic(uuid: UUID): BluetoothGattCharacteristic? {
-    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] services : $services")
     services?.forEach { service ->
-        Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] services : ${service.characteristics}")
         service.characteristics?.firstOrNull() { characteristic ->
             characteristic.uuid == uuid
         }?.let {

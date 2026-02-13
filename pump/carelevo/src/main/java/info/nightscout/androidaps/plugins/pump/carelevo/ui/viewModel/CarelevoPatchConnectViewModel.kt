@@ -379,7 +379,7 @@ class CarelevoPatchConnectViewModel @Inject constructor(
             return
         }
 
-        val expiry = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_PATCH_EXPIRATION_REMINDER_HOURS.key, 72)
+        val expiry = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_PATCH_EXPIRATION_REMINDER_HOURS.key, 116)
         val isBuzzOn = sp.getBoolean(CarelevoBooleanPreferenceKey.CARELEVO_BUZZER_REMINDER.key, false)
 
         compositeDisposable += connectNewPatchUseCase.execute(

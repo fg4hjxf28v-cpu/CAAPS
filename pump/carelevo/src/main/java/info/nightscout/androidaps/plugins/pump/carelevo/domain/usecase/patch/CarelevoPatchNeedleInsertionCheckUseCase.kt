@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch
 
+import android.util.Log
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
@@ -26,15 +27,61 @@ class CarelevoPatchNeedleInsertionCheckUseCase @Inject constructor(
     fun execute(): Single<ResponseResult<CarelevoUseCaseResponse>> {
         return Single.fromCallable {
             runCatching {
-                patchRepository.requestCannulaInsertionCheck()
+                // 1. Cannula insertion check 요청
+                val requestResult = patchRepository.requestCannulaInsertionCheck()
                     .blockingGet()
-                    .takeIf { it is RequestResult.Pending }
-                    ?: throw IllegalStateException("request cannula insertion check is not pending")
 
-                val requestCannulaInsertionResult = patchObserver.patchEvent
+                Log.d("CannulaCheck", "[CannulaCheck] request result = $requestResult")
+                if (requestResult !is RequestResult.Pending) {
+                    throw IllegalStateException("request cannula insertion check is not pending")
+                }
+
+                // 2. 결과 이벤트 수신
+                val insertionResult = patchObserver.patchEvent
                     .ofType<CannulaInsertionResultModel>()
                     .blockingFirst()
 
+                Log.d("CannulaCheck", "[CannulaCheck] insertion result received: ${insertionResult.result}")
+
+                // 3. PatchInfo 조회 (공통)
+                val patchInfo = patchInfoRepository.getPatchInfoBySync()
+                    ?: throw IllegalStateException("patch info must not be null")
+
+                // 4. 결과에 따른 처리
+                if (insertionResult.result == Result.SUCCESS) {
+
+                    val updated = patchInfoRepository.updatePatchInfo(
+                        patchInfo.copy(
+                            updatedAt = DateTime.now(),
+                            checkNeedle = true
+                        )
+                    )
+
+                    if (!updated) {
+                        throw IllegalStateException("update patch info failed (success case)")
+                    }
+
+                    NeedleCheckSuccess
+
+                } else {
+
+                    val nextFailedCount = (patchInfo.needleFailedCount ?: 0) + 1
+
+                    val updated = patchInfoRepository.updatePatchInfo(
+                        patchInfo.copy(
+                            updatedAt = DateTime.now(),
+                            checkNeedle = false,
+                            needleFailedCount = nextFailedCount
+                        )
+                    )
+
+                    if (!updated) {
+                        throw IllegalStateException("update patch info failed (failure case)")
+                    }
+
+                    NeedleCheckFailed(nextFailedCount)
+                }
+/*
                 if (requestCannulaInsertionResult.result == Result.SUCCESS) {
                     patchRepository.requestConfirmCannulaInsertionCheck(true)
                         .blockingGet()
@@ -92,7 +139,7 @@ class CarelevoPatchNeedleInsertionCheckUseCase @Inject constructor(
                         throw IllegalStateException("update patch info is failed")
                     }
                     NeedleCheckFailed(needleFailedCount)
-                }
+                }*/
             }.fold(
                 onSuccess = {
                     ResponseResult.Success(it)
