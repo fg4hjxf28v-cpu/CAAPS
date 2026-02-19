@@ -176,7 +176,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
         carelevoPatch.profile.value?.getOrNull()?.let { profile ->
             setUiState(UiState.Loading)
             compositeDisposable += setBasalProgramUseCase.execute(SetBasalProgramRequestModel(profile))
-                .timeout(15000L, TimeUnit.MILLISECONDS)
+                .timeout(30000L, TimeUnit.MILLISECONDS)
                 .observeOn(aapsSchedulers.io)
                 .subscribeOn(aapsSchedulers.io)
                 .doOnError {

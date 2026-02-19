@@ -118,7 +118,7 @@ class CarelevoPatchConnectFragment : CarelevoBaseFragment<FragmentCarelevoPatchC
             }
 
             is CarelevoConnectPrepareEvent.ConnectComplete -> {
-                ToastUtils.infoToast(requireContext(), "피채 연결 성공 했습니다.")
+                ToastUtils.infoToast(requireContext(), "패치 연결 성공 했습니다.")
                 sharedViewModel.setPage(CarelevoPatchStep.SAFETY_CHECK)
             }
 

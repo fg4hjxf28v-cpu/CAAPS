@@ -407,6 +407,7 @@ class CarelevoOverviewViewModel @Inject constructor(
     private fun startPatchDiscard() {
         setUiState(UiState.Loading)
         compositeDisposable += patchDiscardUseCase.execute()
+            .delaySubscription(2, TimeUnit.SECONDS)
             .timeout(30000L, TimeUnit.MILLISECONDS)
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.main)

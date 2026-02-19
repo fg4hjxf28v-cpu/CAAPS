@@ -661,13 +661,21 @@ class CarelevoPumpPlugin @Inject constructor(
         val address = carelevoPatch.patchInfo.value?.getOrNull()?.address?.uppercase()
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::isConnected] address: $address")
         if (address == null) {
-            return false
+            return true  // address가 없을땐 true로 리턴해야 다른 명령 실행을 막는 루프에 안빠진다.
         }
         val isConnected = carelevoPatch.isBleConnectedNow(address)
         Log.d("PUMP_STATE", "isConnected() -> $isConnected (thread=${Thread.currentThread().name})")
 
         //forceQueueClear()
         return isConnected
+    }
+
+    private fun logRunningCommands(tag: String = "QueueState") {
+        val running = Command.CommandType.entries
+            .filter { commandQueue.isRunning(it) }
+            .joinToString { it.name }
+
+        aapsLogger.debug(LTag.PUMP, "[$tag] running=${running.ifEmpty { "none" }}")
     }
 
     private fun forceQueueClear() {
@@ -703,13 +711,13 @@ class CarelevoPumpPlugin @Inject constructor(
 
     override fun connect(reason: String) {
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::connect] connect called : $reason")
-        _lastDateTime = System.currentTimeMillis()
 
         val patchState = carelevoPatch.getPatchState()
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::connect] disconnect called : $reason, patchState : $patchState")
 
         if (reason == "Connection needed") {
             if (patchState == PatchState.NotConnectedBooted) {
+                _lastDateTime = System.currentTimeMillis()
                 startReconnect()
             }
         }
