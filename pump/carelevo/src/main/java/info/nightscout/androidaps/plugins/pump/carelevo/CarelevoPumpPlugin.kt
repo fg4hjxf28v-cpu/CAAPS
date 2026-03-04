@@ -75,6 +75,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmType.Co
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoCancelTempBasalInfusionUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoStartTempBasalInfusionUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoUpdateBasalProgramUseCase
+import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoSetBasalProgramUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.model.SetBasalProgramRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.model.StartTempBasalInfusionRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.bolus.CarelevoCancelExtendBolusInfusionUseCase
@@ -108,8 +109,6 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.json.JSONException
-import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -140,6 +139,7 @@ class CarelevoPumpPlugin @Inject constructor(
     private val carelevoPatch: CarelevoPatch,
     private val bleController: CarelevoBleController,
 
+    private val setBasalProgramUseCase: CarelevoSetBasalProgramUseCase,
     private val updateBasalProgramUseCase: CarelevoUpdateBasalProgramUseCase,
     private val startTempBasalInfusionUseCase: CarelevoStartTempBasalInfusionUseCase,
     private val cancelTempBasalInfusionUseCase: CarelevoCancelTempBasalInfusionUseCase,
@@ -181,12 +181,14 @@ class CarelevoPumpPlugin @Inject constructor(
     private val pluginDisposable = CompositeDisposable()
 
     private var _lastDateTime: Long = 0
+    private var _lastBolusTime: Long? = null
+    private var _lastBolusAmount: Double? = null
 
     private var _pumpType: PumpType = PumpType.CAREMEDI_CARELEVO
     private val _pumpDescription = PumpDescription().fillFor(_pumpType)
     private var isImmeBolusStop = false
     private var isTryReconnected = false
-    private var tempBasalRunningSince: Long? = null
+    private var queueStuckSince: Long? = null
     private var bolusExpectSec: Long = 0
     private var lastProfileUpdateAttemptMs: Long = 0
 
@@ -643,6 +645,8 @@ class CarelevoPumpPlugin @Inject constructor(
             return false
         }
 
+        logRunningCommands()
+        forceQueueClear()
         val isConnected = carelevoPatch.isBleConnectedNow(address)
         return isConnected
     }
@@ -666,7 +670,7 @@ class CarelevoPumpPlugin @Inject constructor(
         val isConnected = carelevoPatch.isBleConnectedNow(address)
         Log.d("PUMP_STATE", "isConnected() -> $isConnected (thread=${Thread.currentThread().name})")
 
-        //forceQueueClear()
+
         return isConnected
     }
 
@@ -679,25 +683,34 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     private fun forceQueueClear() {
-        val isTempBasalRunning = commandQueue.isRunning(Command.CommandType.TEMPBASAL)
+        val running = Command.CommandType.entries
+            .filter { commandQueue.isRunning(it) }
 
-        if (isTempBasalRunning) {
-            if (tempBasalRunningSince == null) {
-                tempBasalRunningSince = System.currentTimeMillis()
-            } else {
-                val elapsed = System.currentTimeMillis() - tempBasalRunningSince!!
+        if (running.isEmpty()) {
+            queueStuckSince = null
+            return
+        }
 
-                if (elapsed > 5 * 60 * 1000) { // 5분
-                    aapsLogger.error(LTag.PUMP, "TEMP BASAL stuck for ${elapsed / 1000}s → force reset")
+        // Never force-clear while bolus is in progress.
+        if (running.any { it == Command.CommandType.BOLUS || it == Command.CommandType.SMB_BOLUS }) {
+            queueStuckSince = null
+            return
+        }
 
-                    commandQueue.resetPerforming()
-                    commandQueue.clear()
+        val now = System.currentTimeMillis()
+        if (queueStuckSince == null) {
+            queueStuckSince = now
+            return
+        }
 
-                    tempBasalRunningSince = null
-                }
-            }
-        } else {
-            tempBasalRunningSince = null
+        val elapsed = now - queueStuckSince!!
+        val isOnlyBasalProfileRunning = running.size == 1 && running[0] == Command.CommandType.BASAL_PROFILE
+        val timeoutMs = if (isOnlyBasalProfileRunning) 30_000L else 5 * 60 * 1000L
+        if (elapsed > timeoutMs) {
+            aapsLogger.error(LTag.PUMP, "Queue stuck for ${elapsed / 1000}s -> force reset, running=${running.joinToString { it.name }}")
+            commandQueue.resetPerforming()
+            commandQueue.clear()
+            queueStuckSince = null
         }
     }
 
@@ -765,7 +778,7 @@ class CarelevoPumpPlugin @Inject constructor(
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] setNewBasalProfile timezoneOrDSTChanged called - ${carelevoPatch.getPatchState()}")
         _lastDateTime = System.currentTimeMillis()
-        return when (carelevoPatch.getPatchState()) {
+        val result = when (carelevoPatch.getPatchState()) {
             is PatchState.ConnectedBooted -> {
                 startUpdateBasalProgram(profile)
             }
@@ -780,6 +793,8 @@ class CarelevoPumpPlugin @Inject constructor(
                 pumpEnactResultProvider.get()
             }
         }
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] result success=${result.success} enacted=${result.enacted} comment=${result.comment}")
+        return result
     }
 
     private fun startUpdateBasalProgram(profile: Profile): PumpEnactResult {
@@ -803,6 +818,7 @@ class CarelevoPumpPlugin @Inject constructor(
         lastProfileUpdateAttemptMs = now
 
         val infusionInfo = carelevoPatch.infusionInfo.value?.getOrNull()
+        val shouldUseSetBasalProgram = infusionInfo?.basalInfusionInfo == null
         val response = cancelExtendedBolusRx(infusionInfo)
             .flatMap { result ->
                 when {
@@ -830,13 +846,18 @@ class CarelevoPumpPlugin @Inject constructor(
                         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasal skipped (no temp basal)")
                     }
 
-                    else -> {
+                else -> {
                         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasal enacted")
                     }
                 }
-                updateBasalProgramUseCase.execute(
-                    SetBasalProgramRequestModel(profile)
-                )
+                val request = SetBasalProgramRequestModel(profile)
+                if (shouldUseSetBasalProgram) {
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=SET (no basalInfusionInfo)")
+                    setBasalProgramUseCase.execute(request)
+                } else {
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=UPDATE (basalInfusionInfo exists)")
+                    updateBasalProgramUseCase.execute(request)
+                }
             }
             .timeout(20, TimeUnit.SECONDS)
             .onErrorReturn { e ->
@@ -846,7 +867,7 @@ class CarelevoPumpPlugin @Inject constructor(
 
         return when (response) {
             is ResponseResult.Success -> {
-                aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase Success")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase Success")
                 _lastDateTime = System.currentTimeMillis()
                 carelevoPatch.setProfile(profile)
 
@@ -861,12 +882,12 @@ class CarelevoPumpPlugin @Inject constructor(
 
             is ResponseResult.Error -> {
                 aapsLogger.error(
-                    LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase FAILED - error=${response.e}", response.e)
+                    LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase FAILED - error=${response.e}", response.e)
                 result.success(true).enacted(false)
             }
 
             else -> {
-                aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] updateBasalProgramUseCase FAILED - unknown response=$response")
+                aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase FAILED - unknown response=$response")
                 result.success(true).enacted(false)
             }
         }
@@ -907,9 +928,9 @@ class CarelevoPumpPlugin @Inject constructor(
     override val lastDataTime: Long
         get() = lastDataTime()
     override val lastBolusTime: Long?
-        get() = null
+        get() = _lastBolusTime
     override val lastBolusAmount: Double?
-        get() = null
+        get() = _lastBolusAmount
 
     fun lastDataTime(): Long {
         val patchState = carelevoPatch.getPatchState()
@@ -954,13 +975,30 @@ class CarelevoPumpPlugin @Inject constructor(
         if (!carelevoPatch.isCarelevoConnected()) {
             return result
         }
+
+        val infusionInfo = carelevoPatch.infusionInfo.value?.getOrNull()
+        aapsLogger.warn(
+            LTag.PUMP,
+            "[CarelevoPumpPlugin::deliverTreatment] bolus gate check: type=${detailedBolusInfo.bolusType}, " +
+                "immeInfo=${infusionInfo?.immeBolusInfusionInfo}"
+        )
+        if (infusionInfo?.immeBolusInfusionInfo != null) {
+            aapsLogger.warn(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] reject bolus: another immediate bolus is in progress")
+            result.success = false
+            result.enacted = false
+            result.bolusDelivered = 0.0
+            result.comment("Another bolus is in progress")
+            return result
+        }
+
         isImmeBolusStop = false
         val actionId = (carelevoPatch.patchInfo.value?.getOrNull()?.bolusActionSeq ?: 0) + 1
+        val normalizedActionId = if (actionId <= 0) 1 else ((actionId - 1) % 255) + 1
 
         return try {
             startImmeBolusInfusionUseCase.execute(
                 StartImmeBolusInfusionRequestModel(
-                    actionSeq = actionId,
+                    actionSeq = normalizedActionId,
                     volume = detailedBolusInfo.insulin
                 )
             )
@@ -988,12 +1026,26 @@ class CarelevoPumpPlugin @Inject constructor(
         detailedInfo: DetailedBolusInfo,
         result: PumpEnactResult
     ) {
-        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] Success: $detailedInfo")
-        if (response !is ResponseResult.Success) return
+        if (response !is ResponseResult.Success) {
+            val message = when (response) {
+                is ResponseResult.Failure -> response.message
+                is ResponseResult.Error -> response.e.message ?: response.e.toString()
+                else -> "Unknown bolus response"
+            }
+            aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::deliverTreatment] non-success response: $response")
+            result.success = false
+            result.enacted = false
+            result.bolusDelivered = 0.0
+            result.comment(message)
+            return
+        }
 
         val data = response.data as StartImmeBolusInfusionResponseModel
 
-        _lastDateTime = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        _lastDateTime = now
+        _lastBolusTime = now
+        _lastBolusAmount = detailedInfo.insulin
 
         val stepUnit = 0.05
         val totalInsulin = detailedInfo.insulin
@@ -1020,8 +1072,6 @@ class CarelevoPumpPlugin @Inject constructor(
                     SystemClock.sleep(delayMs)
 
                     val delivering = min(step * stepUnit, detailedInfo.insulin)
-                    val percentage = min((delivering / detailedInfo.insulin * 100).toInt(), 100)
-
                     rxBus.send(EventOverviewBolusProgress(rh, delivered = delivering, id = detailedInfo.id))
                 }
             } else {
@@ -1051,22 +1101,27 @@ class CarelevoPumpPlugin @Inject constructor(
             .observeOn(aapsSchedulers.main)
             .subscribeOn(aapsSchedulers.io)
             .timeout(3000L, TimeUnit.MILLISECONDS)
-            .subscribe { response ->
-                when (response) {
-                    is ResponseResult.Success -> {
-                        _lastDateTime = System.currentTimeMillis()
-                        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response success")
-                    }
+            .subscribe(
+                { response ->
+                    when (response) {
+                        is ResponseResult.Success -> {
+                            _lastDateTime = System.currentTimeMillis()
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response success")
+                        }
 
-                    is ResponseResult.Error -> {
-                        aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response error : ${response.e}")
-                    }
+                        is ResponseResult.Error -> {
+                            aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response error : ${response.e}")
+                        }
 
-                    else -> {
-                        aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response failed")
+                        else -> {
+                            aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] response failed")
+                        }
                     }
+                },
+                { e ->
+                    aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] subscribe error: $e")
                 }
-            }
+            )
     }
 
     // cancel imme bolus
@@ -1326,6 +1381,7 @@ class CarelevoPumpPlugin @Inject constructor(
         }
 
         return cancelTempBasalInfusionUseCase.execute()
+            .delaySubscription(2000L, TimeUnit.MILLISECONDS)
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.io)
             .timeout(3000L, TimeUnit.MILLISECONDS)
@@ -1354,7 +1410,7 @@ class CarelevoPumpPlugin @Inject constructor(
             }
             .onErrorReturn { e ->
                 aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::cancelTempBasal] timeout or error : $e")
-                result.success = false
+                result.success = true
                 result.enacted = false
                 result
             }
@@ -1529,47 +1585,6 @@ class CarelevoPumpPlugin @Inject constructor(
             }.map {
                 result
             }.blockingGet()*/
-    }
-
-    fun getJSONStatus(profile: Profile, profileName: String, version: String): JSONObject {
-        val now = System.currentTimeMillis()
-        val pumpJson = JSONObject()
-        val battery = JSONObject()
-        val status = JSONObject()
-        val extended = JSONObject()
-        try {
-            battery.put("percent", 100)
-            val isPumpStop = carelevoPatch.patchInfo.value?.getOrNull()?.isStopped ?: false
-            status.put("status", isPumpStop)
-            status.put("timestamp", dateUtil.toISOString(lastDataTime()))
-            extended.put("Version", version)
-            val tb = pumpSync.expectedPumpState().temporaryBasal
-            if (tb != null) {
-                extended.put("TempBasalAbsoluteRate", tb.convertedToAbsolute(now, profile))
-                extended.put("TempBasalStart", dateUtil.dateAndTimeString(tb.timestamp))
-                extended.put("TempBasalRemaining", tb.plannedRemainingMinutes)
-            }
-            val eb = pumpSync.expectedPumpState().extendedBolus
-            if (eb != null) {
-                extended.put("ExtendedBolusAbsoluteRate", eb.rate)
-                extended.put("ExtendedBolusStart", dateUtil.dateAndTimeString(eb.timestamp))
-                extended.put("ExtendedBolusRemaining", eb.plannedRemainingMinutes)
-            }
-            extended.put("BaseBasalRate", baseBasalRate)
-            try {
-                extended.put("ActiveProfile", profileFunction.getProfile())
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            pumpJson.put("battery", battery)
-            pumpJson.put("status", status)
-            pumpJson.put("extended", extended)
-            pumpJson.put("reservoir", carelevoPatch.patchInfo.value?.getOrNull()?.insulinRemain ?: 0)
-            pumpJson.put("clock", dateUtil.toISOString(now))
-        } catch (e: JSONException) {
-            e.printStackTrace()
-        }
-        return pumpJson
     }
 
     override fun manufacturer(): ManufacturerType {

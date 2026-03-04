@@ -533,7 +533,7 @@ class CarelevoBleMangerImpl @Inject constructor(
 
             val writeType = when {
                 characteristicTarget.isWritable() -> {
-                    Log.d("ble_test", "deliverTreatment [BleManagerImpl::writeCharacteristic] isWritable")
+                    Log.d("ble_test", "[BleManagerImpl::writeCharacteristic] isWritable")
                     BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                 }
 
@@ -745,7 +745,7 @@ class CarelevoBleMangerImpl @Inject constructor(
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
-            Log.w("ble_gatt_lifecycle", "deliverTreatment onConnectionStateChange gatt=${gatt?.hashCode()} status=$status newState=$newState services=${gatt?.services?.size}")
+            Log.w("ble_gatt_lifecycle", "CarelevoBleManagerImpl::onConnectionStateChange gatt=${gatt?.hashCode()} status=$status newState=$newState services=${gatt?.services?.size}")
 
             var currentState: BleState? = CarelevoBleSource.bluetoothState.value?.copy()
             val bondState = gatt?.device?.bondState ?: -1
