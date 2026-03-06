@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -29,6 +30,8 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch.Car
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.model.CarelevoConnectNeedleEvent
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -49,6 +52,12 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
     private val carelevoAlarmInfoUseCase: CarelevoAlarmInfoUseCase
 ) : ViewModel() {
 
+    companion object {
+
+        private const val INSERT_RETRY_DELAY_MS = 150L
+        private const val NEEDLE_TO_BASAL_DELAY_MS = 10_000L
+    }
+
     private val _isNeedleInsert: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val isNeedleInsert = _isNeedleInsert.asStateFlow()
 
@@ -60,6 +69,8 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
 
     private var _isCreated = false
     val isCreated get() = _isCreated
+    private var needleInsertedAtMs: Long? = null
+    private var delayedStartBasalJob: Job? = null
 
     private val compositeDisposable = CompositeDisposable()
 
@@ -104,7 +115,14 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .subscribe {
                 val patchInfo = it?.getOrNull() ?: return@subscribe
                 Log.d("observePatchInfo", "patchInfo needle Insert: $patchInfo")
-                _isNeedleInsert.tryEmit(patchInfo.checkNeedle ?: false)
+                val isNeedleInserted = patchInfo.checkNeedle ?: false
+                _isNeedleInsert.tryEmit(isNeedleInserted)
+                if (isNeedleInserted) {
+                    if (needleInsertedAtMs == null) needleInsertedAtMs = System.currentTimeMillis()
+                } else {
+                    needleInsertedAtMs = null
+                    delayedStartBasalJob?.cancel()
+                }
 
                 val failedCount = patchInfo.needleFailedCount ?: 0
                 if (failedCount >= 3) {
@@ -160,15 +178,37 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
     }
 
     fun startSetBasal() {
+        val insertedAt = needleInsertedAtMs
+        if (insertedAt != null) {
+            val elapsed = System.currentTimeMillis() - insertedAt
+            val remain = NEEDLE_TO_BASAL_DELAY_MS - elapsed
+            if (remain > 0) {
+                setUiState(UiState.Loading)
+                Log.d(
+                    "connect_test",
+                    "[CarelevoConnectNeedleViewModel::startSetBasal] delayed ${remain}ms (elapsed=${elapsed}ms after needle insert)"
+                )
+                delayedStartBasalJob?.cancel()
+                delayedStartBasalJob = viewModelScope.launch {
+                    delay(remain)
+                    startSetBasal()
+                }
+                return
+            }
+        }
+
         if (!carelevoPatch.isBluetoothEnabled()) {
+            setUiState(UiState.Idle)
             triggerEvent(CarelevoConnectNeedleEvent.ShowMessageBluetoothNotEnabled)
             return
         }
         if (!carelevoPatch.isCarelevoConnected()) {
+            setUiState(UiState.Idle)
             triggerEvent(CarelevoConnectNeedleEvent.ShowMessageCarelevoIsNotConnected)
             return
         }
         if (carelevoPatch.profile.value == null) {
+            setUiState(UiState.Idle)
             triggerEvent(CarelevoConnectNeedleEvent.ShowMessageProfileNotSet)
             return
         }
@@ -176,7 +216,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
         carelevoPatch.profile.value?.getOrNull()?.let { profile ->
             setUiState(UiState.Loading)
             compositeDisposable += setBasalProgramUseCase.execute(SetBasalProgramRequestModel(profile))
-                .timeout(30000L, TimeUnit.MILLISECONDS)
+                .timeout(15000L, TimeUnit.MILLISECONDS)
                 .observeOn(aapsSchedulers.io)
                 .subscribeOn(aapsSchedulers.io)
                 .doOnError {
@@ -187,13 +227,11 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                     when (response) {
                         is ResponseResult.Success -> {
                             Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response success")
+                            val serial = carelevoPatch.patchInfo.value?.getOrNull()?.manufactureNumber ?: ""
                             pumpSync.connectNewPump(true)
-                            pumpSync.insertTherapyEventIfNewWithTimestamp(
-                                timestamp = System.currentTimeMillis(),
-                                type = TE.Type.INSULIN_CHANGE,
-                                pumpType = PumpType.CAREMEDI_CARELEVO,
-                                pumpSerial = carelevoPatch.patchInfo.value?.getOrNull()?.manufactureNumber ?: ""
-                            )
+                            Thread.sleep(1000)
+                            insertTherapyEventWithSingleRetry(TE.Type.CANNULA_CHANGE, serial)
+                            insertTherapyEventWithSingleRetry(TE.Type.INSULIN_CHANGE, serial)
                             setUiState(UiState.Idle)
                             triggerEvent(CarelevoConnectNeedleEvent.SetBasalComplete)
                         }
@@ -213,6 +251,26 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                 }
         } ?: run {
             triggerEvent(CarelevoConnectNeedleEvent.ShowMessageProfileNotSet)
+        }
+    }
+
+    private fun insertTherapyEventWithSingleRetry(type: TE.Type, serial: String) {
+        var inserted = pumpSync.insertTherapyEventIfNewWithTimestamp(
+            timestamp = System.currentTimeMillis(),
+            type = type,
+            pumpType = PumpType.CAREMEDI_CARELEVO,
+            pumpSerial = serial
+        )
+        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] $type insert result=$inserted serial=$serial")
+        if (!inserted) {
+            SystemClock.sleep(INSERT_RETRY_DELAY_MS)
+            inserted = pumpSync.insertTherapyEventIfNewWithTimestamp(
+                timestamp = System.currentTimeMillis(),
+                type = type,
+                pumpType = PumpType.CAREMEDI_CARELEVO,
+                pumpSerial = serial
+            )
+            Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] $type recovery insert result=$inserted serial=$serial")
         }
     }
 
@@ -316,6 +374,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
     fun needleFailCount() = carelevoPatch.patchInfo.value?.getOrNull()?.needleFailedCount
 
     override fun onCleared() {
+        delayedStartBasalJob?.cancel()
         compositeDisposable.clear()
         super.onCleared()
     }

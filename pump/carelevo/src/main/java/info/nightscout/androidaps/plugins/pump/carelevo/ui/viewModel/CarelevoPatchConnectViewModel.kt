@@ -392,8 +392,12 @@ class CarelevoPatchConnectViewModel @Inject constructor(
                 isBuzzOn = isBuzzOn
             )
         )
+            .timeout(15000, TimeUnit.MILLISECONDS)
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
+            .onErrorReturn {
+                ResponseResult.Error(it)
+            }
             .subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {

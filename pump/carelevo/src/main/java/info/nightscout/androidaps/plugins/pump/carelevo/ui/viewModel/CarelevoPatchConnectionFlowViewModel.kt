@@ -3,8 +3,6 @@ package info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.aaps.core.data.model.TE
-import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
@@ -96,12 +94,12 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
                 when (response) {
                     is ResponseResult.Success -> {
                         Log.d("connect_test", "[CarelevoConnectViewModel::confirmCannulaInsertionResult] response success")
-                        pumpSync.insertTherapyEventIfNewWithTimestamp(
+                        /*pumpSync.insertTherapyEventIfNewWithTimestamp(
                             timestamp = System.currentTimeMillis(),
                             type = TE.Type.CANNULA_CHANGE,
                             pumpType = PumpType.CAREMEDI_CARELEVO,
                             pumpSerial = carelevoPatch.patchInfo.value?.getOrNull()?.manufactureNumber ?: ""
-                        )
+                        )*/
                     }
 
                     is ResponseResult.Error -> {

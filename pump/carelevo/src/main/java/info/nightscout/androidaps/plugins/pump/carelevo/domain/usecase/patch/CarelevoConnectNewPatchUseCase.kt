@@ -27,6 +27,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.ext.convertHexToByteArra
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.kotlin.ofType
 import io.reactivex.rxjava3.schedulers.Schedulers
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 class CarelevoConnectNewPatchUseCase @Inject constructor(
@@ -34,6 +35,10 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
     private val patchRepository: CarelevoPatchRepository,
     private val patchInfoRepository: CarelevoPatchInfoRepository,
 ) {
+    companion object {
+        private const val PATCH_INFO_ROUND_RETRY_COUNT = 2
+        private const val PATCH_EVENT_TIMEOUT_SEC = 10L
+    }
 
     fun execute(request: CarelevoUseCaseRequest): Single<ResponseResult<CarelevoUseCaseResponse>> {
         return Single.fromCallable {
@@ -99,28 +104,33 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
                     throw IllegalStateException("")
                 }
 
-                patchRepository.requestSetTime(SetTimeRequest("", request.volume, 0, 0))
-                    .blockingGet()
-                    .takeIf { it is RequestResult.Pending }
-                    ?: throw IllegalStateException("request set time is not pending")
+                var patchInfoResult: PatchInformationInquiryModel? = null
+                var inquiryDetailModel: PatchInformationInquiryDetailModel? = null
 
-                Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 8. SET TIME 요청")
+                for (round in 1..PATCH_INFO_ROUND_RETRY_COUNT) {
+                    Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 8. SET TIME 요청 round=$round/$PATCH_INFO_ROUND_RETRY_COUNT")
+                    val (info, detail) = requestPatchInfoRound(request, round)
+                    Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 9. 패치 기본 정보 수신 : $info")
+                    Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 10. 패치 세부 정보 수신 : $detail")
 
-                val patchInfoResult = patchObserver.patchEvent
-                    .ofType(PatchInformationInquiryModel::class.java)
-                    .blockingFirst()
+                    val serial = info.serialNum.trim()
+                    if (info.result == Result.SUCCESS && serial.isNotEmpty()) {
+                        patchInfoResult = info
+                        inquiryDetailModel = detail
+                        break
+                    }
 
-                Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 9. 패치 기본 정보 수신 : $patchInfoResult")
+                    Log.w(
+                        "connect_test",
+                        "[CarelevoRxConnectNewPatchUseCase] invalid patch info round=$round/$PATCH_INFO_ROUND_RETRY_COUNT result=${info.result} serial=$serial"
+                    )
+                }
 
-                val serial = patchInfoResult.serialNum
+                val finalPatchInfo = patchInfoResult ?: throw IllegalStateException("patch info invalid after retry")
+                val finalPatchDetail = inquiryDetailModel ?: throw IllegalStateException("patch detail missing after retry")
+                val serial = finalPatchInfo.serialNum
 
-                val inquiryDetailModel = patchObserver.patchEvent
-                    .ofType<PatchInformationInquiryDetailModel>()
-                    .blockingFirst()
-
-                Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] 10. 패치 세부 정보 수신 : $inquiryDetailModel")
-
-                if (inquiryDetailModel.result != Result.SUCCESS) {
+                if (finalPatchDetail.result != Result.SUCCESS) {
                     throw IllegalStateException("")
                 }
 
@@ -165,9 +175,9 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
                     CarelevoPatchInfoDomainModel(
                         address = address,
                         manufactureNumber = serial,
-                        firmwareVersion = inquiryDetailModel.firmwareVer,
-                        bootDateTime = inquiryDetailModel.bootDateTime,
-                        modelName = inquiryDetailModel.modelName,
+                        firmwareVersion = finalPatchDetail.firmwareVer,
+                        bootDateTime = finalPatchDetail.bootDateTime,
+                        modelName = finalPatchDetail.modelName,
                         insulinAmount = request.volume,
                         insulinRemain = request.volume.toDouble(),
                         thresholdInsulinRemain = request.remains,
@@ -192,6 +202,30 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
                 }
             )
         }.observeOn(Schedulers.io())
+    }
+
+    private fun requestPatchInfoRound(
+        request: CarelevoConnectNewPatchRequestModel,
+        round: Int
+    ): Pair<PatchInformationInquiryModel, PatchInformationInquiryDetailModel> {
+        patchRepository.requestSetTime(SetTimeRequest("", request.volume, 0, 0))
+            .blockingGet()
+            .takeIf { it is RequestResult.Pending }
+            ?: throw IllegalStateException("request set time is not pending")
+
+        Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] waiting 9. 패치 기본 정보 수신 round=$round timeout=${PATCH_EVENT_TIMEOUT_SEC}s")
+        val patchInfo = patchObserver.patchEvent
+            .ofType<PatchInformationInquiryModel>()
+            .timeout(PATCH_EVENT_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .blockingFirst()
+
+        Log.d("connect_test", "[CarelevoRxConnectNewPatchUseCase] waiting 10. 패치 세부 정보 수신 round=$round timeout=${PATCH_EVENT_TIMEOUT_SEC}s")
+        val patchDetail = patchObserver.patchEvent
+            .ofType<PatchInformationInquiryDetailModel>()
+            .timeout(PATCH_EVENT_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .blockingFirst()
+
+        return patchInfo to patchDetail
     }
 
     private fun generateRandomKey(range: ClosedRange<Int>): Int {
