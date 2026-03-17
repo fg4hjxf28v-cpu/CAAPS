@@ -75,11 +75,12 @@ class CarelevoBleMangerImpl @Inject constructor(
 
     private val btLeScanner = btAdapter?.bluetoothLeScanner
 
-    private val defaultScanSetting = ScanSettings.Builder()
-        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-        .setReportDelay(0)
-        .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-        .build()
+    private val defaultScanSetting = ScanSettings.Builder().apply {
+        // Avoid method-chaining here: in JVM unit tests Android stubs may return null.
+        setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+        setReportDelay(0)
+        setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+    }.build()
 
     private var tempAddress: String? = null
     private var disconnectedAddress: String? = null

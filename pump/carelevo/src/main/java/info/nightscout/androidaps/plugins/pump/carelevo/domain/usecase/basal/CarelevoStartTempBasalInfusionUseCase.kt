@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal
 
-import android.util.Log
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.ext.generateUUID
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
@@ -110,8 +109,6 @@ class CarelevoStartTempBasalInfusionUseCase @Inject constructor(
                     ResponseResult.Error(it)
                 }
             )
-        }.timeout(3000L, TimeUnit.MILLISECONDS) { timeoutResult ->
-            Log.d("temp_basal_test", "[CarelevoStartTempBasalInfusionUseCase] timeout call : $timeoutResult")
-        }.observeOn(Schedulers.io())
+        }.timeout(3000L, TimeUnit.MILLISECONDS).observeOn(Schedulers.io())
     }
 }

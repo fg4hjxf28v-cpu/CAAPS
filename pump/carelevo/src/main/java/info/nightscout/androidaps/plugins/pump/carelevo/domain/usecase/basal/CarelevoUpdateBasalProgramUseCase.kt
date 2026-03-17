@@ -10,6 +10,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.basal.Carel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.basal.CarelevoBasalSegmentDomainModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.SetBasalProgramRequestV2
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.SetBasalProgramResult
+import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.UpdateBasalProgramAdditionalResultModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.UpdateBasalProgramResultModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.infusion.CarelevoBasalInfusionInfoDomainModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.infusion.CarelevoBasalSegmentInfusionInfoDomainModel
@@ -21,7 +22,6 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.CarelevoU
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.CarelevoUseCaseResponse
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.model.SetBasalProgramRequestModel
 import io.reactivex.rxjava3.core.Single
-import io.reactivex.rxjava3.kotlin.ofType
 import io.reactivex.rxjava3.schedulers.Schedulers
 import org.joda.time.DateTime
 import java.util.concurrent.TimeUnit
@@ -33,6 +33,11 @@ class CarelevoUpdateBasalProgramUseCase @Inject constructor(
     private val patchInfoRepository: CarelevoPatchInfoRepository,
     private val infusionInfoRepository: CarelevoInfusionInfoRepository
 ) {
+
+    companion object {
+
+        private const val BASAL_RESPONSE_TIMEOUT_SECONDS = 8L
+    }
 
     fun execute(request: CarelevoUseCaseRequest): Single<ResponseResult<CarelevoUseCaseResponse>> {
         return Single.fromCallable {
@@ -82,6 +87,18 @@ class CarelevoUpdateBasalProgramUseCase @Inject constructor(
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 2. MAKE REQUEST MODEL LIST : $requestBasalList")
 
                 val programRequest1 = requestBasalList[0]
+                val requestProgram1ResultFuture = patchObserver.basalEvent
+                    .filter { it is UpdateBasalProgramResultModel || it is UpdateBasalProgramAdditionalResultModel }
+                    .map {
+                        when (it) {
+                            is UpdateBasalProgramResultModel -> it.result
+                            is UpdateBasalProgramAdditionalResultModel -> it.result
+                            else -> throw IllegalStateException("Unexpected basal ack type")
+                        }
+                    }
+                    .firstOrError()
+                    .timeout(BASAL_RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .toFuture()
                 basalRepository.requestUpdateBasalProgramV2(programRequest1)
                     .blockingGet()
                     .takeIf { it is RequestResult.Pending }
@@ -89,17 +106,27 @@ class CarelevoUpdateBasalProgramUseCase @Inject constructor(
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 3. 프로그램 업데이트 1 요청")
 
-                val requestProgram1Result = patchObserver.basalEvent
-                    .ofType<UpdateBasalProgramResultModel>()
-                    .blockingFirst()
+                val requestProgram1Result = requestProgram1ResultFuture.get()
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 4. 프로그램 업데이트 1 요청 결과 수신 : $requestProgram1Result")
 
-                if (requestProgram1Result.result != SetBasalProgramResult.SUCCESS) {
+                if (requestProgram1Result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request update program1 result is failed")
                 }
 
                 val programRequest2 = requestBasalList[1]
+                val requestProgram2ResultFuture = patchObserver.basalEvent
+                    .filter { it is UpdateBasalProgramResultModel || it is UpdateBasalProgramAdditionalResultModel }
+                    .map {
+                        when (it) {
+                            is UpdateBasalProgramResultModel -> it.result
+                            is UpdateBasalProgramAdditionalResultModel -> it.result
+                            else -> throw IllegalStateException("Unexpected basal ack type")
+                        }
+                    }
+                    .firstOrError()
+                    .timeout(BASAL_RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .toFuture()
                 basalRepository.requestUpdateBasalProgramV2(programRequest2)
                     .blockingGet()
                     .takeIf { it is RequestResult.Pending }
@@ -107,17 +134,27 @@ class CarelevoUpdateBasalProgramUseCase @Inject constructor(
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 5. 프로그램 업데이트 2 요청")
 
-                val requestProgram2Result = patchObserver.basalEvent
-                    .ofType<UpdateBasalProgramResultModel>()
-                    .blockingFirst()
+                val requestProgram2Result = requestProgram2ResultFuture.get()
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 6. 프로그램 업데이트 2 요청 결과 수신 : $requestProgram2Result")
 
-                if (requestProgram2Result.result != SetBasalProgramResult.SUCCESS) {
+                if (requestProgram2Result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request update program2 result is failed")
                 }
 
                 val programRequest3 = requestBasalList[2]
+                val requestProgram3ResultFuture = patchObserver.basalEvent
+                    .filter { it is UpdateBasalProgramResultModel || it is UpdateBasalProgramAdditionalResultModel }
+                    .map {
+                        when (it) {
+                            is UpdateBasalProgramResultModel -> it.result
+                            is UpdateBasalProgramAdditionalResultModel -> it.result
+                            else -> throw IllegalStateException("Unexpected basal ack type")
+                        }
+                    }
+                    .firstOrError()
+                    .timeout(BASAL_RESPONSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .toFuture()
                 basalRepository.requestUpdateBasalProgramV2(programRequest3)
                     .blockingGet()
                     .takeIf { it is RequestResult.Pending }
@@ -125,13 +162,11 @@ class CarelevoUpdateBasalProgramUseCase @Inject constructor(
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 7. 프로그램 업데이트 3 요청")
 
-                val requestProgram3Result = patchObserver.basalEvent
-                    .ofType<UpdateBasalProgramResultModel>()
-                    .blockingFirst()
+                val requestProgram3Result = requestProgram3ResultFuture.get()
 
                 Log.d("basal_test", "[CarelevoRxUpdateBasalProgramUseCase] 8. 프로그램 업데이트 3 요청 결과 수신 : $requestProgram3Result")
 
-                if (requestProgram3Result.result != SetBasalProgramResult.SUCCESS) {
+                if (requestProgram3Result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request update program3 result is failed")
                 }
 

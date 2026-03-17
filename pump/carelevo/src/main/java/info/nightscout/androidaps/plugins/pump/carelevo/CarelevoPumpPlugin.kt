@@ -6,7 +6,6 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.IntentFilter
 import android.os.SystemClock
-import android.util.Log
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -42,6 +41,7 @@ import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveListIntPreference
@@ -72,10 +72,11 @@ import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.alarm.Carel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.infusion.CarelevoInfusionInfoDomainModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmCause
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.type.AlarmType.Companion.isCritical
+import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.CarelevoUseCaseResponse
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoCancelTempBasalInfusionUseCase
+import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoSetBasalProgramUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoStartTempBasalInfusionUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoUpdateBasalProgramUseCase
-import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.CarelevoSetBasalProgramUseCase
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.model.SetBasalProgramRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal.model.StartTempBasalInfusionRequestModel
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.bolus.CarelevoCancelExtendBolusInfusionUseCase
@@ -102,6 +103,7 @@ import info.nightscout.androidaps.plugins.pump.carelevo.event.EventForceStopConn
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.base.AppForegroundObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.ui.fragments.CarelevoOverviewFragment
 import io.reactivex.rxjava3.core.Completable
+import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.disposables.Disposable
@@ -197,6 +199,10 @@ class CarelevoPumpPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+
+        aapsLogger.debug("onStartonStartonStartonStartonStartonStartonStartonStartonStartonStart")
+        sp.putInt(IntKey.OverviewCageWarning.key, 72)
+        sp.putInt(IntKey.OverviewCageCritical.key, 168)
         pluginDisposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
@@ -232,7 +238,6 @@ class CarelevoPumpPlugin @Inject constructor(
                     )
                     .andThen(
                         Single.fromCallable {
-                            Log.d("onStart", "3) getProfile start")
                             requireNotNull(profileFunction.getProfile()) { "profile is null" }
                         }
                             .doOnSuccess { aapsLogger.debug(LTag.PUMP, "onStart", "3) getProfile ok: $it") }
@@ -392,7 +397,6 @@ class CarelevoPumpPlugin @Inject constructor(
         val lowInsulinNoticeAmount = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_LOW_INSULIN_EXPIRATION_REMINDER_HOURS.key, 0)
         val patchState = carelevoPatch.patchState.value?.getOrNull()
 
-        Log.d("CarelevoPumpPlugin", "lowInsulinNoticeAmount($lowInsulinNoticeAmount)")
         if (lowInsulinNoticeAmount == 0) {
             return
         }
@@ -426,8 +430,6 @@ class CarelevoPumpPlugin @Inject constructor(
     fun updatePatchExpiredThreshold() {
         val patchExpiredThreshold = sp.getInt(CarelevoIntPreferenceKey.CARELEVO_PATCH_EXPIRATION_REMINDER_HOURS.key, 0)
         val patchState = carelevoPatch.patchState.value?.getOrNull()
-
-        Log.d("CarelevoPumpPlugin", "updatePatchExpiredThreshold($patchExpiredThreshold)")
 
         val request = CarelevoPatchExpiredThresholdModifyRequestModel(
             patchState = patchState,
@@ -645,7 +647,6 @@ class CarelevoPumpPlugin @Inject constructor(
             return false
         }
 
-        logRunningCommands()
         forceQueueClear()
         val isConnected = carelevoPatch.isBleConnectedNow(address)
         return isConnected
@@ -668,18 +669,7 @@ class CarelevoPumpPlugin @Inject constructor(
             return true  // address가 없을땐 true로 리턴해야 다른 명령 실행을 막는 루프에 안빠진다.
         }
         val isConnected = carelevoPatch.isBleConnectedNow(address)
-        Log.d("PUMP_STATE", "isConnected() -> $isConnected (thread=${Thread.currentThread().name})")
-
-
         return isConnected
-    }
-
-    private fun logRunningCommands(tag: String = "QueueState") {
-        val running = Command.CommandType.entries
-            .filter { commandQueue.isRunning(it) }
-            .joinToString { it.name }
-
-        aapsLogger.debug(LTag.PUMP, "[$tag] running=${running.ifEmpty { "none" }}")
     }
 
     private fun forceQueueClear() {
@@ -798,7 +788,7 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     private fun startUpdateBasalProgram(profile: Profile): PumpEnactResult {
-        aapsLogger.debug("[CarelevoPumpPlugin::startUpdateBasalProgram] Start : $profile")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] Start : $profile")
 
         val result = pumpEnactResultProvider.get()
 
@@ -808,61 +798,32 @@ class CarelevoPumpPlugin @Inject constructor(
                 Notification.FAILED_UPDATE_PROFILE,
                 rh.gs(R.string.carelevo_profile_update_skip_too_soon),
                 Notification.INFO,
-                10
+                1
             )
             return result
                 .success(true)
                 .enacted(false)
                 .comment(rh.gs(R.string.carelevo_profile_update_skip_comment))
         }
-        lastProfileUpdateAttemptMs = now
 
         val infusionInfo = carelevoPatch.infusionInfo.value?.getOrNull()
         val shouldUseSetBasalProgram = infusionInfo?.basalInfusionInfo == null
         val response = cancelExtendedBolusRx(infusionInfo)
-            .flatMap { result ->
-                when {
-                    !result.success -> {
-                        aapsLogger.warn(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelExtendedBolus FAILED")
-                    }
-
-                    !result.enacted -> {
-                        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelExtendedBolus skipped (no extended bolus)")
-                    }
-
-                    else -> {
-                        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelExtendedBolus enacted")
-                    }
-                }
-                cancelTempBasalRx(infusionInfo)
-            }
-            .flatMap { result ->
-                when {
-                    !result.success -> {
-                        aapsLogger.warn(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasal FAILED")
-                    }
-
-                    !result.enacted -> {
-                        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasal skipped (no temp basal)")
-                    }
-
-                else -> {
-                        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasal enacted")
-                    }
-                }
-                val request = SetBasalProgramRequestModel(profile)
-                if (shouldUseSetBasalProgram) {
-                    aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=SET (no basalInfusionInfo)")
-                    setBasalProgramUseCase.execute(request)
-                } else {
-                    aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=UPDATE (basalInfusionInfo exists)")
-                    updateBasalProgramUseCase.execute(request)
-                }
-            }
             .timeout(20, TimeUnit.SECONDS)
-            .onErrorReturn { e ->
-                ResponseResult.Error(e)
+            .retryCancelWithLog("cancelExtendedBolus")
+            .flatMap {
+                if (!it.success) throw IllegalStateException("cancelExtendedBolus failed")
+
+                cancelTempBasalRx(infusionInfo)
+                    .timeout(20, TimeUnit.SECONDS)
+                    .retryCancelWithLog("cancelTempBasal")
             }
+            .flatMap {
+                if (!it.success) throw IllegalStateException("cancelTempBasal failed")
+
+                executeBasalProgram(profile, shouldUseSetBasalProgram).timeout(20, TimeUnit.SECONDS)
+            }
+            .onErrorReturn { ResponseResult.Error(it) }
             .blockingGet()
 
         return when (response) {
@@ -870,7 +831,7 @@ class CarelevoPumpPlugin @Inject constructor(
                 aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase Success")
                 _lastDateTime = System.currentTimeMillis()
                 carelevoPatch.setProfile(profile)
-
+                lastProfileUpdateAttemptMs = System.currentTimeMillis()
                 uiInteraction.addNotificationValidFor(
                     Notification.PROFILE_SET_OK,
                     rh.gs(app.aaps.core.ui.R.string.profile_set_ok),
@@ -881,15 +842,56 @@ class CarelevoPumpPlugin @Inject constructor(
             }
 
             is ResponseResult.Error -> {
-                aapsLogger.error(
-                    LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase FAILED - error=${response.e}", response.e)
-                result.success(true).enacted(false)
+                aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase Error - error=${response.e}", response.e)
+                lastProfileUpdateAttemptMs = System.currentTimeMillis()
+                result.success(false).enacted(false)
             }
 
-            else -> {
+            is ResponseResult.Failure -> {
                 aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] basalProgramUseCase FAILED - unknown response=$response")
-                result.success(true).enacted(false)
+                lastProfileUpdateAttemptMs = System.currentTimeMillis()
+                result.success(false).enacted(false)
             }
+        }
+    }
+
+    private fun <T : Any> Single<T>.retryCancelWithLog(
+        tag: String,
+        maxRetry: Int = 3,
+        delayMs: Long = 300L
+    ): Single<T> {
+        return this.retryWhen { errors ->
+            errors
+                .zipWith(Flowable.range(1, maxRetry)) { error, retryCount ->
+                    if (retryCount < maxRetry) {
+                        aapsLogger.warn(LTag.PUMP, "[$tag] retry $retryCount/$maxRetry - reason=${error.message}")
+                        retryCount
+                    } else {
+                        aapsLogger.error(LTag.PUMP, "[$tag] retry exhausted ($maxRetry) - reason=${error.message}")
+                        throw error
+                    }
+                }
+                .flatMap {
+                    Flowable.timer(delayMs, TimeUnit.MILLISECONDS)
+                }
+        }
+    }
+
+    private fun executeBasalProgram(profile: Profile, shouldUseSetBasalProgram: Boolean): Single<ResponseResult<CarelevoUseCaseResponse>> {
+        val request = SetBasalProgramRequestModel(profile)
+
+        return if (shouldUseSetBasalProgram) {
+            aapsLogger.debug(
+                LTag.PUMP,
+                "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=SET"
+            )
+            setBasalProgramUseCase.execute(request)
+        } else {
+            aapsLogger.debug(
+                LTag.PUMP,
+                "[CarelevoPumpPlugin::startUpdateBasalProgram] useCase=UPDATE"
+            )
+            updateBasalProgramUseCase.execute(request)
         }
     }
 
@@ -909,7 +911,7 @@ class CarelevoPumpPlugin @Inject constructor(
     private fun cancelTempBasalRx(infusionInfo: CarelevoInfusionInfoDomainModel?): Single<PumpEnactResult> {
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasalRx infusionInfo: $infusionInfo")
         return if (infusionInfo?.tempBasalInfusionInfo != null) {
-            Single.fromCallable { cancelTempBasal(true)}
+            Single.fromCallable { cancelTempBasal(true) }
                 .onErrorReturn {
                     aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it)
                     pumpEnactResultProvider.get().success(false)
@@ -1384,7 +1386,7 @@ class CarelevoPumpPlugin @Inject constructor(
             .delaySubscription(2000L, TimeUnit.MILLISECONDS)
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.io)
-            .timeout(3000L, TimeUnit.MILLISECONDS)
+            .timeout(15000L, TimeUnit.MILLISECONDS)
             .map { response ->
                 when (response) {
                     is ResponseResult.Success -> {
@@ -1410,7 +1412,7 @@ class CarelevoPumpPlugin @Inject constructor(
             }
             .onErrorReturn { e ->
                 aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::cancelTempBasal] timeout or error : $e")
-                result.success = true
+                result.success = false
                 result.enacted = false
                 result
             }
