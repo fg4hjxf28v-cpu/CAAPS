@@ -200,9 +200,7 @@ class CarelevoPumpPlugin @Inject constructor(
     override fun onStart() {
         super.onStart()
 
-        aapsLogger.debug("onStartonStartonStartonStartonStartonStartonStartonStartonStartonStart")
-        sp.putInt(IntKey.OverviewCageWarning.key, 72)
-        sp.putInt(IntKey.OverviewCageCritical.key, 168)
+        applyCageDefaultOnce()
         pluginDisposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
@@ -899,10 +897,14 @@ class CarelevoPumpPlugin @Inject constructor(
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelExtendedBolusRx infusionInfo: $infusionInfo")
         return if (infusionInfo?.extendBolusInfusionInfo != null) {
             Single.fromCallable { cancelExtendedBolus() }
-                .onErrorReturn {
-                    aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it)
-                    pumpEnactResultProvider.get().success(false)
+                .flatMap { cancelResult ->
+                    if (cancelResult.success) {
+                        Single.just(cancelResult)
+                    } else {
+                        Single.error(IllegalStateException("cancelExtendedBolus returned success=false"))
+                    }
                 }
+                .doOnError { aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it) }
         } else {
             Single.just(pumpEnactResultProvider.get().success(true).enacted(false))
         }
@@ -912,10 +914,14 @@ class CarelevoPumpPlugin @Inject constructor(
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::startUpdateBasalProgram] cancelTempBasalRx infusionInfo: $infusionInfo")
         return if (infusionInfo?.tempBasalInfusionInfo != null) {
             Single.fromCallable { cancelTempBasal(true) }
-                .onErrorReturn {
-                    aapsLogger.error(LTag.PUMP, "cancelExtendedBolus error", it)
-                    pumpEnactResultProvider.get().success(false)
+                .flatMap { cancelResult ->
+                    if (cancelResult.success) {
+                        Single.just(cancelResult)
+                    } else {
+                        Single.error(IllegalStateException("cancelTempBasal returned success=false"))
+                    }
                 }
+                .doOnError { aapsLogger.error(LTag.PUMP, "cancelTempBasal error", it) }
         } else {
             Single.just(pumpEnactResultProvider.get().success(true).enacted(false))
         }
@@ -1124,6 +1130,16 @@ class CarelevoPumpPlugin @Inject constructor(
                     aapsLogger.error(LTag.PUMP, "[CarelevoPumpPlugin::handleFinishImmeBolus] subscribe error: $e")
                 }
             )
+    }
+
+    private fun applyCageDefaultOnce() {
+        if (sp.getBoolean(CarelevoBooleanPreferenceKey.CARELEVO_CAGE_DEFAULT_APPLIED.key, false)) return
+
+        sp.edit {
+            putInt(IntKey.OverviewCageWarning.key, 96)
+            putInt(IntKey.OverviewCageCritical.key, 168)
+            putBoolean(CarelevoBooleanPreferenceKey.CARELEVO_CAGE_DEFAULT_APPLIED.key, true)
+        }
     }
 
     // cancel imme bolus
