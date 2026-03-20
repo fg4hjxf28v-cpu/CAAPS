@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.basal
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.ext.generateUUID
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.ext.splitSegment
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 class CarelevoSetBasalProgramUseCase @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val patchObserver: CarelevoPatchObserver,
     private val basalRepository: CarelevoBasalRepository,
     private val patchInfoRepository: CarelevoPatchInfoRepository,
@@ -61,7 +63,7 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                     )
                 }.splitSegment()
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 1. SPLIT SEGMENT : $basalSegment")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] splitSegment result=$basalSegment")
 
                 val requestBasalList = basalSegment
                     .chunked(8)
@@ -79,7 +81,7 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                         )
                     }
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 2. MAKE REQUEST MODEL LIST : $requestBasalList")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] buildRequestList result=$requestBasalList")
 
                 val programRequest1 = requestBasalList[0]
                 basalRepository.requestSetBasalProgramV2(programRequest1)
@@ -87,13 +89,13 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                     .takeIf { it is RequestResult.Pending }
                     ?: throw IllegalStateException("request program1 is not pending")
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 3. 프로그램 설정 1 요청")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram1.start")
 
                 val requestProgram1Result = patchObserver.basalEvent
                     .ofType<SetBasalProgramResultModel>()
                     .blockingFirst()
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 4. 프로그램 설정 1 요청 결과 수신 : $requestProgram1Result")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram1.result result=$requestProgram1Result")
 
                 if (requestProgram1Result.result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request program1 result is failed")
@@ -105,13 +107,13 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                     .takeIf { it is RequestResult.Pending }
                     ?: throw IllegalStateException("request program2 is not pending")
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 4. 프로그램 설정 2 요청")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram2.start")
 
                 val requestProgram2Result = patchObserver.basalEvent
                     .ofType<SetBasalProgramResultModel>()
                     .blockingFirst()
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 6. 프로그램 설정 2 요청 결과 수신 : $requestProgram2Result")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram2.result result=$requestProgram2Result")
 
                 if (requestProgram2Result.result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request program2 result is failed")
@@ -123,13 +125,13 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                     .takeIf { it is RequestResult.Pending }
                     ?: throw IllegalStateException("request program3 is not pending")
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 5. 프로그램 설정 3 요청")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram3.start")
 
                 val requestProgram3Result = patchObserver.basalEvent
                     .ofType<SetBasalProgramResultModel>()
                     .blockingFirst()
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 8. 프로그램 설정 3 요청 결과 수신 : $requestProgram3Result")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] requestProgram3.result result=$requestProgram3Result")
 
                 if (requestProgram3Result.result != SetBasalProgramResult.SUCCESS) {
                     throw IllegalStateException("request program3 result is failed")
@@ -140,7 +142,7 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
 
                 val updatePatchInfoResult = patchInfoRepository.updatePatchInfo(patchInfo.copy(updatedAt = DateTime.now(), mode = 1))
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 9. 패치 정보 업데이트 : $updatePatchInfoResult")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] updatePatchInfo result=$updatePatchInfoResult")
 
                 if (!updatePatchInfoResult) {
                     throw IllegalStateException("update patch info is failed")
@@ -162,7 +164,7 @@ class CarelevoSetBasalProgramUseCase @Inject constructor(
                     )
                 )
 
-                Log.d("basal_test", "[CarelevoRxSetBasalProgramUseCase] 10. 주입 정보 업데이트 : $updateInfusionInfoResult")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoSetBasalProgramUseCase] updateInfusionInfo result=$updateInfusionInfoResult")
 
                 if (!updateInfusionInfoResult) {
                     throw IllegalStateException("update infusion info is failed")

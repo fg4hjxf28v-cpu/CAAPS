@@ -3,6 +3,8 @@ package info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.Connect
@@ -34,6 +36,7 @@ import javax.inject.Named
 import kotlin.jvm.optionals.getOrNull
 
 class CarelevoCommunicationCheckViewModel @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val aapsSchedulers: AapsSchedulers,
     private val bleController: CarelevoBleController,
     private val carelevoPatch: CarelevoPatch,
@@ -91,19 +94,19 @@ class CarelevoCommunicationCheckViewModel @Inject constructor(
             .subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startForceDiscard] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startForceDiscard] response success")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoCommunicationCheckEvent.DiscardComplete)
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startForceDiscard] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startForceDiscard] response error : ${response.e}")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoCommunicationCheckEvent.DiscardFailed)
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startForceDiscard] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startForceDiscard] response failed")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoCommunicationCheckEvent.DiscardFailed)
                     }
@@ -128,11 +131,11 @@ class CarelevoCommunicationCheckViewModel @Inject constructor(
             .subscribe { result ->
                 when (result) {
                     is CommandResult.Success -> {
-                        Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startReconnect] connect result success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startReconnect] connect result success")
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startReconnect] connect result failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startReconnect] connect result failed")
                         cancelReconnect()
                     }
                 }
@@ -144,7 +147,7 @@ class CarelevoCommunicationCheckViewModel @Inject constructor(
                 setUiState(UiState.Loading)
 
                 btState.getOrNull()?.let { state ->
-                    Log.d("connect_test", "[CarelevoCommunicationCheckViewModel::startReconnect] state : $state")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoCommunicationCheckViewModel::startReconnect] state : $state")
                     if (state.shouldBeConnected()) {
                         bleController.execute(DiscoveryService(address))
                             .blockingGet()

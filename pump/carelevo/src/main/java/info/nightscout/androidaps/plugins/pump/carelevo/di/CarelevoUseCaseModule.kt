@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.di
 
+import app.aaps.core.interfaces.logging.AAPSLogger
 import dagger.Module
 import dagger.Provides
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
@@ -49,11 +50,13 @@ class CarelevoUseCaseModule {
 
     @Provides
     fun provideCarelevoConnectNewPatchUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoPatchRepository: CarelevoPatchRepository,
         carelevoPatchInfoRepository: CarelevoPatchInfoRepository
     ): CarelevoConnectNewPatchUseCase {
         return CarelevoConnectNewPatchUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoPatchRepository,
             carelevoPatchInfoRepository
@@ -91,12 +94,14 @@ class CarelevoUseCaseModule {
     // about basal
     @Provides
     fun provideCarelevoSetBasalProgramUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoBasalRepository: CarelevoBasalRepository,
         carelevoPatchInfoRepository: CarelevoPatchInfoRepository,
         carelevoInfusionInfoRepository: CarelevoInfusionInfoRepository
     ): CarelevoSetBasalProgramUseCase {
         return CarelevoSetBasalProgramUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoBasalRepository,
             carelevoPatchInfoRepository,
@@ -106,12 +111,14 @@ class CarelevoUseCaseModule {
 
     @Provides
     fun provideCarelevoUpdateBasalProgramUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoBasalRepository: CarelevoBasalRepository,
         carelevoPatchInfoRepository: CarelevoPatchInfoRepository,
         carelevoInfusionInfoRepository: CarelevoInfusionInfoRepository
     ): CarelevoUpdateBasalProgramUseCase {
         return CarelevoUpdateBasalProgramUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoBasalRepository,
             carelevoPatchInfoRepository,
@@ -226,12 +233,14 @@ class CarelevoUseCaseModule {
     // about user setting info
     @Provides
     fun provideCarelevoUpdateMaxBolusDoseUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoPatchRepository: CarelevoPatchRepository,
         carelevoInfusionInfoRepository: CarelevoInfusionInfoRepository,
         carelevoUserSettingInfoRepository: CarelevoUserSettingInfoRepository
     ): CarelevoUpdateMaxBolusDoseUseCase {
         return CarelevoUpdateMaxBolusDoseUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoPatchRepository,
             carelevoInfusionInfoRepository,
@@ -241,11 +250,13 @@ class CarelevoUseCaseModule {
 
     @Provides
     fun provideCarelevoUpdateLowInsulinNoticeAmountUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoPatchRepository: CarelevoPatchRepository,
         carelevoUserSettingInfoRepository: CarelevoUserSettingInfoRepository
     ): CarelevoUpdateLowInsulinNoticeAmountUseCase {
         return CarelevoUpdateLowInsulinNoticeAmountUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoPatchRepository,
             carelevoUserSettingInfoRepository
@@ -343,11 +354,13 @@ class CarelevoUseCaseModule {
 
     @Provides
     fun provideCarelevoPatchCannulaInsertionCheckUseCase(
+        aapsLogger: AAPSLogger,
         carelevoPatchObserver: CarelevoPatchObserver,
         carelevoPatchRepository: CarelevoPatchRepository,
         carelevoPatchInfoRepository: CarelevoPatchInfoRepository
     ): CarelevoPatchNeedleInsertionCheckUseCase {
         return CarelevoPatchNeedleInsertionCheckUseCase(
+            aapsLogger,
             carelevoPatchObserver,
             carelevoPatchRepository,
             carelevoPatchInfoRepository

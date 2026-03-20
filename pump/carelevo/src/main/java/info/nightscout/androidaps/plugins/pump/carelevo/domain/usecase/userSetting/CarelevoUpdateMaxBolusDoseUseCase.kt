@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import info.nightscout.androidaps.plugins.pump.carelevo.common.model.PatchState
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
@@ -22,6 +23,7 @@ import org.joda.time.DateTime
 import javax.inject.Inject
 
 class CarelevoUpdateMaxBolusDoseUseCase @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val patchObserver: CarelevoPatchObserver,
     private val patchRepository: CarelevoPatchRepository,
     private val infusionInfoRepository: CarelevoInfusionInfoRepository,
@@ -44,7 +46,7 @@ class CarelevoUpdateMaxBolusDoseUseCase @Inject constructor(
                     ?: throw NullPointerException("user setting info must be not null")
 
                 if (infusionInfo?.immeBolusInfusionInfo != null || infusionInfo?.extendBolusInfusionInfo != null) {
-                    Log.d("user_setting_test", "[CarelevoRxUpdateMaxBolusDoseUseCase] case 1 볼러스 주입 중, local update patch sync true")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateMaxBolusDoseUseCase] case1 bolusRunning localUpdate syncPatch=true")
 
                     val updateUserSettingInfoResult = userSettingInfoRepository.updateUserSettingInfo(
                         userSettingInfo.copy(updatedAt = DateTime.now(), maxBolusDose = request.maxBolusDose, needMaxBolusDoseSyncPatch = true)
@@ -55,7 +57,7 @@ class CarelevoUpdateMaxBolusDoseUseCase @Inject constructor(
                 } else {
                     when (request.patchState) {
                         is PatchState.ConnectedBooted -> {
-                            Log.d("user_setting_test", "[CarelevoRxUpdateMaxBolusDoseUseCase] case 2 볼러스 미주입, 패치 연결 중, request patch and local update")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateMaxBolusDoseUseCase] case2 connected requestPatchAndLocalUpdate")
                             patchRepository.requestSetThresholdMaxDose(SetThresholdInfusionMaxDoseRequest(request.maxBolusDose))
                                 .blockingGet()
                                 .takeIf { it is RequestResult.Pending }
@@ -78,7 +80,7 @@ class CarelevoUpdateMaxBolusDoseUseCase @Inject constructor(
                         }
 
                         is PatchState.NotConnectedNotBooting -> {
-                            Log.d("user_setting_test", "[CarelevoRxUpdateMaxBolusDoseUseCase] case 3 패치 연결 안함, local update, patch sync false")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateMaxBolusDoseUseCase] case3 notConnected localUpdate syncPatch=false")
                             val updateUserSettingInfoResult = userSettingInfoRepository.updateUserSettingInfo(
                                 userSettingInfo.copy(updatedAt = DateTime.now(), maxBolusDose = request.maxBolusDose, needMaxBolusDoseSyncPatch = false)
                             )
@@ -88,7 +90,7 @@ class CarelevoUpdateMaxBolusDoseUseCase @Inject constructor(
                         }
 
                         else -> {
-                            Log.d("user_setting_test", "[CarelevoRxUpdateMaxBolusDoseUseCse] case 4 패치 연결 끊김, local update, sync patch true")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateMaxBolusDoseUseCase] case4 disconnected localUpdate syncPatch=true")
                             val updateUserSettingInfoResult = userSettingInfoRepository.updateUserSettingInfo(
                                 userSettingInfo.copy(updatedAt = DateTime.now(), maxBolusDose = request.maxBolusDose, needMaxBolusDoseSyncPatch = true)
                             )

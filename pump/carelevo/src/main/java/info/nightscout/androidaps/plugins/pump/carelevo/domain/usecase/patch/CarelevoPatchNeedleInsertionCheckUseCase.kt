@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
@@ -19,6 +20,7 @@ import org.joda.time.DateTime
 import javax.inject.Inject
 
 class CarelevoPatchNeedleInsertionCheckUseCase @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val patchObserver: CarelevoPatchObserver,
     private val patchRepository: CarelevoPatchRepository,
     private val patchInfoRepository: CarelevoPatchInfoRepository
@@ -31,7 +33,7 @@ class CarelevoPatchNeedleInsertionCheckUseCase @Inject constructor(
                 val requestResult = patchRepository.requestCannulaInsertionCheck()
                     .blockingGet()
 
-                Log.d("CannulaCheck", "[CannulaCheck] request result = $requestResult")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchNeedleInsertionCheckUseCase] requestCannulaInsertionCheck result=$requestResult")
                 if (requestResult !is RequestResult.Pending) {
                     throw IllegalStateException("request cannula insertion check is not pending")
                 }
@@ -41,7 +43,7 @@ class CarelevoPatchNeedleInsertionCheckUseCase @Inject constructor(
                     .ofType<CannulaInsertionResultModel>()
                     .blockingFirst()
 
-                Log.d("CannulaCheck", "[CannulaCheck] insertion result received: ${insertionResult.result}")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchNeedleInsertionCheckUseCase] insertionResult result=${insertionResult.result}")
 
                 // 3. PatchInfo 조회 (공통)
                 val patchInfo = patchInfoRepository.getPatchInfoBySync()

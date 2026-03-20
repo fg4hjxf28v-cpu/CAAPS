@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.common
 
-import android.util.Log
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.profile.Profile
@@ -178,8 +177,8 @@ class CarelevoPatch @Inject constructor(
         val isPatchValid = patchInfo.value?.getOrNull()?.let { true } ?: false
         val isPeripheralConnected = btState.value?.getOrNull()?.isPeripheralConnected() ?: false
 
-        Log.d("patch_state", "[CarelevoPatchRx::getPatchState] isPatchValid : $isPatchValid")
-        Log.d("patch_state", "[CarelevoPatchRx::getPatchState] isPeripheralConnected : $isPeripheralConnected")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::getPatchState] isPatchValid : $isPatchValid")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::getPatchState] isPeripheralConnected : $isPeripheralConnected")
 
         val result = when {
             isPeripheralConnected && isPatchValid -> PatchState.ConnectedBooted
@@ -188,16 +187,16 @@ class CarelevoPatch @Inject constructor(
             else -> PatchState.NotConnectedNotBooting
         }
 
-        Log.d("patch_state", "[CarelevoPatchRx::getPatchState] result : $result")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::getPatchState] result : $result")
         return result
     }
 
     private fun observeChangeState() {
-        Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] observeChangeState called")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::observeChangeState] observeChangeState called")
         bleDisposable += rxBus.toObservable(EventForceStopConnecting::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe {
-                Log.w("patch_test", "Force stop connectingDisposable")
+                aapsLogger.warn(LTag.PUMP, "Force stop connectingDisposable")
                 connectingDisposable?.dispose()
                 connectingDisposable = null
             }
@@ -209,8 +208,8 @@ class CarelevoPatch @Inject constructor(
             val btAvailable = btState.getOrNull()?.isAvailable()
             val btPeripheralConnected = btState.getOrNull()?.isPeripheralConnected()
 
-            Log.d("patch_state", "[CarelevoPatchRx::changeState] btAvailable : $btAvailable")
-            Log.d("patch_state", "[CarelevoPatchRx::changeState] btPeripheralConnected : $btPeripheralConnected")
+            aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::changeState] btAvailable : $btAvailable")
+            aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::changeState] btPeripheralConnected : $btPeripheralConnected")
 
             var result = getPatchState()
             if (result == PatchState.ConnectedBooted) {
@@ -219,7 +218,7 @@ class CarelevoPatch @Inject constructor(
                 }
             }
 
-            Log.d("patch_state", "[CarelevoPatchRx::changeState] result : $result")
+            aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::changeState] result : $result")
 
             _isConnected.onNext(btPeripheralConnected ?: false)
             _connectedAddress.onNext(Optional.ofNullable(bleController.getConnectedAddress()))
@@ -227,7 +226,7 @@ class CarelevoPatch @Inject constructor(
 
             when (result) {
                 is PatchState.NotConnectedNotBooting -> {
-                    Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is no connection")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPatch::observeChangeState] patch state is no connection")
                     rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
                     rxBus.send(EventRefreshOverview("Carelevo connection state", true))
                     rxBus.send(EventCustomActionsChanged())
@@ -235,7 +234,7 @@ class CarelevoPatch @Inject constructor(
                 }
 
                 is PatchState.ConnectedBooted -> {
-                    Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is ConnectedBooted")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPatch::observeChangeState] patch state is ConnectedBooted")
                     rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED))
                     rxBus.send(EventRefreshOverview("Carelevo connection state", true))
                     rxBus.send(EventCustomActionsChanged())
@@ -243,7 +242,7 @@ class CarelevoPatch @Inject constructor(
                 }
 
                 is PatchState.NotConnectedBooted -> {
-                    Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is NotConnectedBooted")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPatch::observeChangeState] patch state is NotConnectedBooted")
 
                     /*connectingDisposable?.dispose()
                     connectingDisposable = Observable.interval(0, 1, TimeUnit.SECONDS)
@@ -257,7 +256,7 @@ class CarelevoPatch @Inject constructor(
                 }
 
                 else -> {
-                    Log.d("patch_test", "[CarelevoPatch::observeChangeState] patch state is disconnected")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoPatch::observeChangeState] patch state is disconnected")
                     rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
                 }
             }
@@ -267,14 +266,14 @@ class CarelevoPatch @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnComplete {
-                Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] doOnComplete called")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::observeChangeState] doOnComplete called")
             }
             .doOnError {
                 it.printStackTrace()
-                Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] doOnError called : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::observeChangeState] doOnError called : $it")
             }
             .subscribe {
-                Log.d("patch_test", "[CarelevoPatchRx::observeChangeState] result : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::observeChangeState] result : $it")
             }
     }
 
@@ -332,7 +331,7 @@ class CarelevoPatch @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .distinctUntilChanged()
             .subscribe { state ->
-                Log.d("ble_observer", "[CarelevoPatchRx::observeBleState] state : $state")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::observeBleState] state : $state")
                 if (state.isEnabled == DeviceModuleState.DEVICE_STATE_OFF) {
                     if (lastBtState != null && lastBtState?.isEnabled != DeviceModuleState.DEVICE_STATE_OFF) {
                         bleController.checkGatt()

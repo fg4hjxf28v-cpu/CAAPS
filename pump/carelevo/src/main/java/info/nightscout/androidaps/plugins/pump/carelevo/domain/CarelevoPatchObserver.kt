@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.PatchResultModel
@@ -20,7 +21,8 @@ class CarelevoPatchObserver @Inject constructor(
     private val patchRepository: CarelevoPatchRepository,
     private val basalRepository: CarelevoBasalRepository,
     private val bolusRepository: CarelevoBolusRepository,
-    private val aapsSchedulers: AapsSchedulers
+    private val aapsSchedulers: AapsSchedulers,
+    private val aapsLogger: AAPSLogger
 ) {
 
     private val bleDisposable = CompositeDisposable()
@@ -62,7 +64,7 @@ class CarelevoPatchObserver @Inject constructor(
                 if (result is ResponseResult.Success) {
                     result.data?.let {
                         createPatchResultModel(it)?.let { model ->
-                            Log.d("알람", "model: $model")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoPatchObserver] observePatch model=$model")
                             _patchEvent.onNext(model)
                             _patchResponseEvent.onNext(model)
                         }

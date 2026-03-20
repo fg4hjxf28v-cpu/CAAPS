@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.di
 
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.sharedPreferences.SP
 import dagger.Module
 import dagger.Provides

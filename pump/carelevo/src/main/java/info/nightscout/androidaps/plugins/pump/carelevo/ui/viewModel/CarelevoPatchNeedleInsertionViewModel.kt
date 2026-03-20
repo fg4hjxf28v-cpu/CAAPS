@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
@@ -41,6 +43,7 @@ import javax.inject.Inject
 import kotlin.jvm.optionals.getOrNull
 
 class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val pumpSync: PumpSync,
     private val aapsSchedulers: AapsSchedulers,
     private val carelevoPatch: CarelevoPatch,
@@ -114,7 +117,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .subscribeOn(aapsSchedulers.io)
             .subscribe {
                 val patchInfo = it?.getOrNull() ?: return@subscribe
-                Log.d("observePatchInfo", "patchInfo needle Insert: $patchInfo")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoPatchNeedleInsertionViewModel] observePatchInfo patchInfo=$patchInfo")
                 val isNeedleInserted = patchInfo.checkNeedle ?: false
                 _isNeedleInsert.tryEmit(isNeedleInserted)
                 if (isNeedleInserted) {
@@ -148,7 +151,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnError {
-                Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startCheckNeedle] doOnError called $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startCheckNeedle] doOnError called $it")
                 setUiState(UiState.Idle)
                 val failedCount = carelevoPatch.patchInfo.value?.getOrNull()?.needleFailedCount ?: return@doOnError
                 triggerEvent(CarelevoConnectNeedleEvent.CheckNeedleFailed(failedCount))
@@ -184,8 +187,8 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             val remain = NEEDLE_TO_BASAL_DELAY_MS - elapsed
             if (remain > 0) {
                 setUiState(UiState.Loading)
-                Log.d(
-                    "connect_test",
+                aapsLogger.debug(
+                    LTag.PUMP,
                     "[CarelevoConnectNeedleViewModel::startSetBasal] delayed ${remain}ms (elapsed=${elapsed}ms after needle insert)"
                 )
                 delayedStartBasalJob?.cancel()
@@ -220,13 +223,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                 .observeOn(aapsSchedulers.io)
                 .subscribeOn(aapsSchedulers.io)
                 .doOnError {
-                    Log.e("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response timeout")
+                    aapsLogger.error(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] response timeout")
                     setUiState(UiState.Idle)
                     triggerEvent(CarelevoConnectNeedleEvent.SetBasalFailed)
                 }.subscribe { response ->
                     when (response) {
                         is ResponseResult.Success -> {
-                            Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response success")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] response success")
                             val serial = carelevoPatch.patchInfo.value?.getOrNull()?.manufactureNumber ?: ""
                             pumpSync.connectNewPump(true)
                             Thread.sleep(1000)
@@ -237,13 +240,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                         }
 
                         is ResponseResult.Error -> {
-                            Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response error : ${response.e}")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] response error : ${response.e}")
                             setUiState(UiState.Idle)
                             triggerEvent(CarelevoConnectNeedleEvent.SetBasalFailed)
                         }
 
                         else -> {
-                            Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] response failed")
+                            aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] response failed")
                             setUiState(UiState.Idle)
                             triggerEvent(CarelevoConnectNeedleEvent.SetBasalFailed)
                         }
@@ -261,7 +264,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             pumpType = PumpType.CAREMEDI_CARELEVO,
             pumpSerial = serial
         )
-        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] $type insert result=$inserted serial=$serial")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] $type insert result=$inserted serial=$serial")
         if (!inserted) {
             SystemClock.sleep(INSERT_RETRY_DELAY_MS)
             inserted = pumpSync.insertTherapyEventIfNewWithTimestamp(
@@ -270,7 +273,7 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                 pumpType = PumpType.CAREMEDI_CARELEVO,
                 pumpSerial = serial
             )
-            Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startSetBasal] $type recovery insert result=$inserted serial=$serial")
+            aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startSetBasal] $type recovery insert result=$inserted serial=$serial")
         }
     }
 
@@ -289,13 +292,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnError {
-                Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startDiscard] doOnError called : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startDiscard] doOnError called : $it")
                 setUiState(UiState.Idle)
                 triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
             }.subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startDiscard] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startDiscard] response success")
                         bleController.unBondDevice()
                         carelevoPatch.releasePatch()
                         setUiState(UiState.Idle)
@@ -303,13 +306,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startDiscard] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startDiscard] response error : ${response.e}")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startDiscard] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startDiscard] response failed")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
                     }
@@ -324,13 +327,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnError {
-                Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startForceDiscard] doOnError called : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startForceDiscard] doOnError called : $it")
                 setUiState(UiState.Idle)
                 triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
             }.subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startForceDiscard] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startForceDiscard] response success")
                         bleController.unBondDevice()
                         carelevoPatch.releasePatch()
                         setUiState(UiState.Idle)
@@ -338,13 +341,13 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startForceDiscard] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startForceDiscard] response error : ${response.e}")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoConnectNeedleViewModel::startForceDiscard] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectNeedleViewModel::startForceDiscard] response failed")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectNeedleEvent.DiscardFailed)
                     }
@@ -366,8 +369,8 @@ class CarelevoPatchNeedleInsertionViewModel @Inject constructor(
             .subscribeOn(aapsSchedulers.io)
             .observeOn(aapsSchedulers.io)
             .subscribe(
-                { Log.d("alarm", "upsert complete") },
-                { e -> Log.e("alarm", "upsert error", e) }
+                { aapsLogger.debug(LTag.PUMP, "[CarelevoPatchNeedleInsertionViewModel] recordNeedleInsertFailAlarm.upsertComplete") },
+                { e -> aapsLogger.error(LTag.PUMP, "[CarelevoPatchNeedleInsertionViewModel] recordNeedleInsertFailAlarm.upsertError error=$e") }
             )
     }
 

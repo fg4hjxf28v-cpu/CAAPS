@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.di
 
 import android.content.Context
+import app.aaps.core.interfaces.logging.AAPSLogger
 import dagger.Module
 import dagger.Provides
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
@@ -48,11 +49,13 @@ class CarelevoBleModule {
     @Singleton
     internal fun provideCarelevoBleManager(
         context : Context,
-        param : BleParams
+        param : BleParams,
+        aapsLogger: AAPSLogger
     ) : CarelevoBleManager {
         return CarelevoBleMangerImpl(
             context,
-            param
+            param,
+            aapsLogger
         )
     }
 

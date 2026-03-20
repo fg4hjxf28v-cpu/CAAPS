@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch
 
-import android.util.Log
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.bt.SafetyCheckResult
@@ -29,26 +28,26 @@ class CarelevoPatchSafetyCheckUseCase @Inject constructor(
                     .takeIf { it is RequestResult.Pending }
                     ?: throw IllegalStateException("request safety check is not pending")
 
-                Log.d("connect_test", "[CarelevoRxPatchSafetyCheckUseCase] 1. 안전점검 요청")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoRxPatchSafetyCheckUseCase] 1. 안전점검 요청")
 
                 val requestSafetyCheckResult = patchObserver.patchEvent
                     .ofType<SafetyCheckResultModel>()
                     .blockingFirst()
 
-                Log.d("connect_test", "[CarelevoRxPatchSafetyCheckUseCase] 2. 안전점검 요청 결과 수신 : $requestSafetyCheckResult")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoRxPatchSafetyCheckUseCase] 2. 안전점검 요청 결과 수신 : $requestSafetyCheckResult")
 
                 if(!(requestSafetyCheckResult.result == SafetyCheckResult.REP_REQUEST || requestSafetyCheckResult.result == SafetyCheckResult.REP_REQUEST1)) {
                     throw IllegalStateException("request safety check result is failed")
                 }
 
                 val currentThread = Thread.currentThread().name
-                Log.d("connect_test", "[CarelevoRxPatchSafetyCheckUseCase] current thread : $currentThread")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoRxPatchSafetyCheckUseCase] current thread : $currentThread")
 
                 val ackResult = patchObserver.patchEvent
                     .ofType<SafetyCheckResultModel>()
                     .blockingFirst()
 
-                Log.d("connect_test", "[CarelevoRxPatchSafetyCheckUseCase] 3. 안전점검 요청 결과 액크 수신 : $ackResult")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoRxPatchSafetyCheckUseCase] 3. 안전점검 요청 결과 액크 수신 : $ackResult")
 
                 if(ackResult.result != SafetyCheckResult.SUCCESS) {
                     throw IllegalStateException("safety check ack result is failed")
@@ -82,7 +81,7 @@ class CarelevoPatchSafetyCheckUseCase @Inject constructor(
                         return@flatMap Single.error(IllegalStateException("request safety check is not pending"))
                     }
 
-                    Log.d("connect_test", "[UseCase] 1. 안전점검 요청 보냄")
+                    aapsLogger.debug(LTag.PUMP, "[UseCase] 1. 안전점검 요청 보냄")
 
                     // 1) REQ/REQ1 기다리기 (짧은 기본 타임아웃)
                     val requestReplySingle = patchObserver.patchEvent
@@ -92,10 +91,10 @@ class CarelevoPatchSafetyCheckUseCase @Inject constructor(
                         .timeout(100, TimeUnit.SECONDS) // 첫 응답은 보통 빨리 옴(필요 시 조정)
 
                     requestReplySingle.flatMap { requestReply ->
-                        Log.d("connect_test", "[UseCase] 2. 요청 결과 수신: $requestReply, ${requestReply.durationSeconds}")
+                        aapsLogger.debug(LTag.PUMP, "[UseCase] 2. 요청 결과 수신: $requestReply, ${requestReply.durationSeconds}")
 
                         val timeoutSec = (requestReply.durationSeconds + 30).toLong()
-                        Log.d("connect_test", "[UseCase] ACK 타임아웃: ${timeoutSec}s")
+                        aapsLogger.debug(LTag.PUMP, "[UseCase] ACK 타임아웃: ${timeoutSec}s")
 
                         // 2) ACK(SUCCESS) 기다리기 - durationSeconds 만큼
                         patchObserver.patchEvent
@@ -106,7 +105,7 @@ class CarelevoPatchSafetyCheckUseCase @Inject constructor(
                     }
                 }
                 .flatMap {
-                    Log.d("connect_test", "[UseCase] 3. ACK 수신: $it")
+                    aapsLogger.debug(LTag.PUMP, "[UseCase] 3. ACK 수신: $it")
 
                     val patchInfo = patchInfoRepository.getPatchInfoBySync()
                         ?: return@flatMap Single.error(NullPointerException("patch info must be not null"))
@@ -145,8 +144,6 @@ class CarelevoPatchSafetyCheckUseCase @Inject constructor(
                     .toObservable()
                     .flatMap { requestReply ->
                         val timeoutSec = (requestReply.durationSeconds + 30).toLong()
-
-                        Log.d("connect_test", "[UseCase] ACK 타임아웃: ${timeoutSec}s")
 
                         val progress: Observable<SafetyProgress> = Observable.just(SafetyProgress.Progress(timeoutSec))
 

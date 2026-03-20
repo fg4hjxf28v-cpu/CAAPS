@@ -3,6 +3,8 @@ package info.nightscout.androidaps.plugins.pump.carelevo.ui.viewModel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
@@ -32,6 +34,7 @@ import javax.inject.Inject
 import kotlin.jvm.optionals.getOrNull
 
 class CarelevoPatchConnectionFlowViewModel @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val pumpSync: PumpSync,
     private val aapsSchedulers: AapsSchedulers,
     private val carelevoPatch: CarelevoPatch,
@@ -93,7 +96,7 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
             .subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::confirmCannulaInsertionResult] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::confirmCannulaInsertionResult] response success")
                         /*pumpSync.insertTherapyEventIfNewWithTimestamp(
                             timestamp = System.currentTimeMillis(),
                             type = TE.Type.CANNULA_CHANGE,
@@ -103,11 +106,11 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::ConfirmCannulaInsertionResult] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::ConfirmCannulaInsertionResult] response error : ${response.e}")
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::ConfirmCannulaInsertionResult] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::ConfirmCannulaInsertionResult] response failed")
                     }
                 }
             }
@@ -158,14 +161,14 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribeOn(aapsSchedulers.io)
             .doOnError {
-                Log.d("connect_test", "[CarelevoConnectViewModel::startPatchDiscard] doOnError called : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchDiscard] doOnError called : $it")
                 setUiState(UiState.Idle)
                 triggerEvent(CarelevoConnectEvent.DiscardFailed)
             }
             .subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchDiscard] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchDiscard] response success")
                         bleController.unBondDevice()
                         carelevoPatch.releasePatch()
                         setUiState(UiState.Idle)
@@ -173,13 +176,13 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchDiscard] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchDiscard] response error : ${response.e}")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectEvent.DiscardFailed)
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchDiscard] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchDiscard] response failed")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectEvent.DiscardFailed)
                     }
@@ -193,7 +196,7 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
             .timeout(3000L, TimeUnit.MILLISECONDS)
             .observeOn(aapsSchedulers.io)
             .doOnError {
-                Log.d("connect_test", "[CarelevoConnectViewModel::startPatchForceDiscard] doOnError called : $it")
+                aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchForceDiscard] doOnError called : $it")
                 setUiState(UiState.Idle)
                 triggerEvent(CarelevoConnectEvent.DiscardFailed)
             }
@@ -201,7 +204,7 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
             .subscribe { response ->
                 when (response) {
                     is ResponseResult.Success -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchForceDiscard] response success")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchForceDiscard] response success")
                         bleController.unBondDevice()
                         carelevoPatch.releasePatch()
                         setUiState(UiState.Idle)
@@ -209,13 +212,13 @@ class CarelevoPatchConnectionFlowViewModel @Inject constructor(
                     }
 
                     is ResponseResult.Error -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchForceDiscard] response error : ${response.e}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchForceDiscard] response error : ${response.e}")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectEvent.DiscardFailed)
                     }
 
                     else -> {
-                        Log.d("connect_test", "[CarelevoConnectViewModel::startPatchForceDiscard] response failed")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoConnectViewModel::startPatchForceDiscard] response failed")
                         setUiState(UiState.Idle)
                         triggerEvent(CarelevoConnectEvent.DiscardFailed)
                     }

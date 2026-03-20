@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch
 
-import android.util.Log
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.result.ResultSuccess
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.repository.CarelevoPatchInfoRepository
@@ -23,8 +22,6 @@ class CarelevoPatchRptInfusionInfoProcessUseCase @Inject constructor(
                 if (request !is CarelevoPatchRptInfusionInfoRequestModel && request !is CarelevoPatchRptInfusionInfoDefaultRequestModel) {
                     throw IllegalArgumentException("request is not carelevoPatchRptInfusionInfoRequestModel")
                 }
-
-                Log.d("connect_test", "[CarelevoPatchRptInfusionInfoProcessUseCase] request : $request")
 
                 val patchInfo = patchInfoRepository.getPatchInfoBySync()
                     ?: throw NullPointerException("patch info must be not null")

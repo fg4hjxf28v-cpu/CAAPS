@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.userSetting
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import info.nightscout.androidaps.plugins.pump.carelevo.common.model.PatchState
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
@@ -21,6 +22,7 @@ import org.joda.time.DateTime
 import javax.inject.Inject
 
 class CarelevoUpdateLowInsulinNoticeAmountUseCase @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val patchObserver: CarelevoPatchObserver,
     private val patchRepository: CarelevoPatchRepository,
     private val userSettingInfoRepository: CarelevoUserSettingInfoRepository
@@ -42,7 +44,7 @@ class CarelevoUpdateLowInsulinNoticeAmountUseCase @Inject constructor(
 
                 when (request.patchState) {
                     is PatchState.ConnectedBooted -> {
-                        Log.d("user_setting_test", "[CarelevoRxUpdateLowInsulinNoticeAmountUseCase] case 1 패치 연결 중, request patch, local update")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateLowInsulinNoticeAmountUseCase] case1 connected requestPatchAndLocalUpdate")
                         patchRepository.requestSetThresholdNotice(SetThresholdNoticeRequest(request.lowInsulinNoticeAmount, 0))
                             .blockingGet()
                             .takeIf { it is RequestResult.Pending }
@@ -65,7 +67,7 @@ class CarelevoUpdateLowInsulinNoticeAmountUseCase @Inject constructor(
                     }
 
                     is PatchState.NotConnectedNotBooting -> {
-                        Log.d("user_setting_test", "[CarelevoRxUpdateLowInsulinNoticeAmountUseCase] case 2 패치 미 연결중, local update patch sync false")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateLowInsulinNoticeAmountUseCase] case2 notConnected localUpdate syncPatch=false")
                         val updateUserSettingInfoResult = userSettingInfoRepository.updateUserSettingInfo(
                             userSettingInfo.copy(updatedAt = DateTime.now(), lowInsulinNoticeAmount = request.lowInsulinNoticeAmount, needLowInsulinNoticeAmountSyncPatch = false)
                         )
@@ -75,7 +77,7 @@ class CarelevoUpdateLowInsulinNoticeAmountUseCase @Inject constructor(
                     }
 
                     else -> {
-                        Log.d("user_setting_test", "[CarelevoRxUpdateLowInsulinNoticeAmountUseCase] case 3 패치 연결 끊김, local update, sync patch true")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoUpdateLowInsulinNoticeAmountUseCase] case3 disconnected localUpdate syncPatch=true")
                         val updateUserSettingInfoResult = userSettingInfoRepository.updateUserSettingInfo(
                             userSettingInfo.copy(updatedAt = DateTime.now(), lowInsulinNoticeAmount = request.lowInsulinNoticeAmount, needLowInsulinNoticeAmountSyncPatch = true)
                         )

@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.domain.usecase.patch
 
-import android.util.Log
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.CarelevoPatchObserver
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.RequestResult
 import info.nightscout.androidaps.plugins.pump.carelevo.domain.model.ResponseResult
@@ -30,7 +29,7 @@ class CarelevoPatchAdditionalPrimingUseCase @Inject constructor(
                 val resultAdditionalPriming = patchObserver.patchEvent
                     .ofType<AdditionalPrimingResultModel>()
                     .blockingFirst()
-                Log.d("connect_test", "[CarelevoPatchAdditionalPrimingUseCase::execute] retryAdditionalPriming : $resultAdditionalPriming")
+
                 if (resultAdditionalPriming.result == Result.SUCCESS) {
                     ResultSuccess
                 } else {

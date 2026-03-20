@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.ui.binding
 
-import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -23,7 +22,6 @@ fun CarelevoKeyValueRowView.bindPatchStateText(state: PatchState?) {
 
 @BindingAdapter("bleStateImg")
 fun CarelevoKeyValueRowView.bindBleStateText(btState: DeviceModuleState?) {
-    Log.d("bindBleStateText", "bindBleStateText btState: $btState")
     val drawableRes = when (btState) {
         DeviceModuleState.DEVICE_STATE_ON -> {
             R.drawable.ic_bt_connected
@@ -63,7 +61,6 @@ fun Button.bindBleButtonText(state: PatchState?) {
 
 @BindingAdapter("bleButtonEnable")
 fun Button.bindBleButtonEnable(state: PatchState?) {
-    Log.d("bindBleButtonEnable", "state: $state")
     isEnabled = state != PatchState.NotConnectedNotBooting
 }
 

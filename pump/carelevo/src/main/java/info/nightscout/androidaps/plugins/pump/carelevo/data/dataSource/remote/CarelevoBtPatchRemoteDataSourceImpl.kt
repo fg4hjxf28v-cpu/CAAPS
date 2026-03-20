@@ -1,6 +1,7 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.data.dataSource.remote
 
-import android.util.Log
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.CarelevoBleSource
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.core.CarelevoBleController
 import info.nightscout.androidaps.plugins.pump.carelevo.ble.data.CommandResult
@@ -43,11 +44,9 @@ class CarelevoBtPatchRemoteDataSourceImpl @Inject constructor(
                         }
                     }.fold(
                         onSuccess = {
-                            Log.d("_patchResponse", "_patchResponse onSuccess: $it")
                             it
                         },
                         onFailure = {
-                            Log.d("_patchResponse", "_patchResponse Error: $it")
                             BleResponse.Error(it)
                         }
                     )

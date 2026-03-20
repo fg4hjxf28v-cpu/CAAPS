@@ -33,13 +33,15 @@ class CarelevoManagerModule {
         carelevoBasalRepository: CarelevoBasalRepository,
         carelevoBolusRepository: CarelevoBolusRepository,
         carelevoPatchRepository: CarelevoPatchRepository,
-        aapsSchedulers: AapsSchedulers
+        aapsSchedulers: AapsSchedulers,
+        aapsLogger: AAPSLogger
     ): CarelevoPatchObserver {
         return CarelevoPatchObserver(
             carelevoPatchRepository,
             carelevoBasalRepository,
             carelevoBolusRepository,
-            aapsSchedulers
+            aapsSchedulers,
+            aapsLogger
         )
     }
 

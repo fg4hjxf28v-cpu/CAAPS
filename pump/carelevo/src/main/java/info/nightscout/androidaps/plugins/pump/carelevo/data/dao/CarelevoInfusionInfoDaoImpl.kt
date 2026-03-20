@@ -1,6 +1,5 @@
 package info.nightscout.androidaps.plugins.pump.carelevo.data.dao
 
-import android.util.Log
 import app.aaps.core.interfaces.sharedPreferences.SP
 import info.nightscout.androidaps.plugins.pump.carelevo.config.PrefEnvConfig
 import info.nightscout.androidaps.plugins.pump.carelevo.data.common.CarelevoGsonHelper
@@ -16,7 +15,7 @@ import javax.inject.Inject
 import kotlin.jvm.optionals.getOrNull
 
 class CarelevoInfusionInfoDaoImpl @Inject constructor(
-    private val prefManager : SP
+    private val prefManager : SP,
 ) : CarelevoInfusionInfoDao {
 
     private val _infusionInfo : BehaviorSubject<Optional<CarelevoInfusionInfoEntity>> = BehaviorSubject.create()
@@ -281,8 +280,6 @@ class CarelevoInfusionInfoDaoImpl @Inject constructor(
                 }
 
                 _infusionInfo.onNext(Optional.ofNullable(infusionInfo))
-                Log.d("data_test", "[CarelevoRxInfusionInfoDaoImpl::updateBasalInfusionInfo] info : $info")
-                Log.d("data_test", "[CarelevoRxInfusionInfoDaoImpl::updateBasalInfusionInfo] infusion info : ${_infusionInfo.value?.getOrNull()}")
                 true
             },
             onFailure = {

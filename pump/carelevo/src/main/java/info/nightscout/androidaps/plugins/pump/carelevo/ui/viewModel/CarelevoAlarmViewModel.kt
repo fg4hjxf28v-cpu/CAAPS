@@ -133,7 +133,7 @@ class CarelevoAlarmViewModel @Inject constructor(
                     }
 
                 }, { e ->
-                    Log.e("AlarmVM", "getAlarmsOnce error", e)
+                    aapsLogger.error(LTag.PUMP, "[CarelevoAlarmViewModel] getAlarmsOnce.error error=$e")
                 })
     }
 
@@ -142,8 +142,7 @@ class CarelevoAlarmViewModel @Inject constructor(
         val alarmType = info.alarmType
         val alarmCause = info.cause
 
-        Log.d("alarm_test", "[AlarmViewModel::startAlarmClearProcess] alarmType : $alarmType")
-        Log.d("alarm_test", "[AlarmViewModel::startAlarmClearProcess] alarmCause : $alarmCause")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoAlarmViewModel] startAlarmClearProcess alarmType=$alarmType, alarmCause=$alarmCause")
 
         when (alarmCause) {
             AlarmCause.ALARM_WARNING_LOW_INSULIN,
@@ -188,10 +187,10 @@ class CarelevoAlarmViewModel @Inject constructor(
                 .observeOn(aapsSchedulers.main)
                 .subscribe(
                     {
-                        Log.d("AlarmVM", "Success to acknowledge alarm ${info.alarmId}")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoAlarmViewModel] acknowledgeAlarm.success alarmId=${info.alarmId}")
                         acknowledgeAndRemoveAlarm(info.alarmId)
                     }, { e ->
-                        Log.e("AlarmVM", "Failed to acknowledge alarm ${info.alarmId}", e)
+                        aapsLogger.error(LTag.PUMP, "[CarelevoAlarmViewModel] acknowledgeAlarm.error alarmId=${info.alarmId} error=$e")
                     })
         }
     }
@@ -229,7 +228,7 @@ class CarelevoAlarmViewModel @Inject constructor(
                     {
                         startAlarmClearPatchForceQuitProcess()
                     }, { e ->
-                        Log.e("AlarmVM", "Failed to acknowledge alarm ${info.alarmId}", e)
+                        aapsLogger.error(LTag.PUMP, "[CarelevoAlarmViewModel] clearPatchDiscard.error alarmId=${info.alarmId} error=$e")
                     })
         }
     }
@@ -274,12 +273,12 @@ class CarelevoAlarmViewModel @Inject constructor(
                 .observeOn(aapsSchedulers.main)
                 .subscribe(
                     { result ->
-                        Log.d("AlarmVM", "[AlarmViewModel::startAlarmClearPatchForceQuitProcess] result : $result")
+                        aapsLogger.debug(LTag.PUMP, "[CarelevoAlarmViewModel] startAlarmClearPatchForceQuitProcess result=$result")
                         bleController.unBondDevice()
                         carelevoPatch.flushPatchInformation()
                         clearAllAlarms()
                     }, { e ->
-                        Log.e("AlarmVM", "Disconnect failed", e)
+                        aapsLogger.error(LTag.PUMP, "[CarelevoAlarmViewModel] startAlarmClearPatchForceQuitProcess.disconnectError error=$e")
                     })
         } ?: run {
             bleController.unBondDevice()
@@ -306,12 +305,12 @@ class CarelevoAlarmViewModel @Inject constructor(
                 .subscribe { result ->
                     when (result) {
                         is CommandResult.Success -> {
-                            Log.d("connect_test", "[AlarmViewModel::startReconnect] connect result success")
+                            aapsLogger.debug(LTag.PUMP, "[AlarmViewModel::startReconnect] connect result success")
                             acknowledgeAndRemoveAlarm(alarmId)
                         }
 
                         else -> {
-                            Log.d("connect_test", "[AlarmViewModel::startReconnect] connect result failed")
+                            aapsLogger.debug(LTag.PUMP, "[AlarmViewModel::startReconnect] connect result failed")
                         }
                     }
                 }
@@ -326,10 +325,10 @@ class CarelevoAlarmViewModel @Inject constructor(
                 {
                     _alarmQueue.value = emptyList()
                     val ok = _alarmQueueEmptyEvent.tryEmit(Unit)
-                    Log.d("AlarmVM", "[AlarmViewModel::clearAllAlarms] emit empty event: $ok")
+                    aapsLogger.debug(LTag.PUMP, "[CarelevoAlarmViewModel] clearAllAlarms emitEmptyEvent=$ok")
                 },
                 { e ->
-                    Log.e("AlarmVM", "[AlarmViewModel::clearAllAlarms] clearAllAlarms error", e)
+                    aapsLogger.error(LTag.PUMP, "[CarelevoAlarmViewModel] clearAllAlarms.error error=$e")
                 })
     }
 }

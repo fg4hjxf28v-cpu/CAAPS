@@ -2,7 +2,6 @@ package info.nightscout.androidaps.plugins.pump.carelevo.ui.fragments
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -138,7 +137,6 @@ class CarelevoOverviewFragment : CarelevoBaseFragment<FragmentCarelevoOverviewBi
 
         repeatOnStartedWithViewOwner {
             viewModel.hasUnacknowledgedAlarms.collect { hasAlarm ->
-                Log.d("alarmQueue", "[CarelevoOverviewFragment::setupObserver] hasAlarm : $hasAlarm")
                 if (hasAlarm) {
                     viewModel.initUnacknowledgedAlarms()
                     showAlarmScreen()

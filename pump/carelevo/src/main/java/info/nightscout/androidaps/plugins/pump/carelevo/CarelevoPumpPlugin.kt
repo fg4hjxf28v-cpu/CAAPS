@@ -129,7 +129,6 @@ class CarelevoPumpPlugin @Inject constructor(
 
     @Inject @Named("characterTx") lateinit var txUuid: UUID
 
-    // region Lifecycle
     override fun onStart() {
         super.onStart()
 
@@ -319,9 +318,7 @@ class CarelevoPumpPlugin @Inject constructor(
         }
 
     }
-    // endregion
 
-    // region Preferences
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
         if (requiredKey != null) return
 
@@ -360,10 +357,6 @@ class CarelevoPumpPlugin @Inject constructor(
             )
         }
     }
-    // endregion
-
-    // region Pump Overrides
-    /* 패치가 실제 연결 중 인지 확인 */
     override fun isInitialized(): Boolean {
         return connectionCoordinator.isInitialized()
     }
@@ -584,5 +577,4 @@ class CarelevoPumpPlugin @Inject constructor(
             onLastDataUpdated = { _lastDateTime = System.currentTimeMillis() }
         )
     }
-    // endregion
 }
