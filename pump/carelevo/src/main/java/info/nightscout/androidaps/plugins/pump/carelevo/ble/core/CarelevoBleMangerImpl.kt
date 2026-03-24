@@ -494,14 +494,14 @@ class CarelevoBleMangerImpl @Inject constructor(
             )
         }
 
-        // ⭐ 1️⃣ gatt를 여기서 한 번만 고정
+        // gatt를 여기서 한 번만 고정
         val gatt = bluetoothGatt
             ?: return CommandResult.Failure(
                 FailureState.FAILURE_COMMAND_NOT_EXECUTABLE,
                 "BluetoothGatt is null"
             )
 
-        // ⭐ 2️⃣ services 발견 여부는 대표 gatt 기준으로만 검사
+        // services 발견 여부는 대표 gatt 기준으로만 검사
         if (gatt.services.isNullOrEmpty()) {
             aapsLogger.error(
                 LTag.PUMP,
@@ -513,7 +513,7 @@ class CarelevoBleMangerImpl @Inject constructor(
             )
         }
 
-        // ⭐ 3️⃣ stale gatt 방어 (중요)
+        // stale gatt 방어 (중요)
         if (gatt !== bluetoothGatt) {
             aapsLogger.warn(
                 LTag.PUMP,
@@ -530,7 +530,6 @@ class CarelevoBleMangerImpl @Inject constructor(
             "[CarelevoBleManagerImpl] writeCharacteristic.outgoing ${payloadSummary(payload)} gatt=${gatt.hashCode()}"
         )
 
-        // ---- 이하 로직은 기존 그대로 ----
         return gatt.findCharacteristic(params.rxUUID)?.let { characteristicTarget ->
             aapsLogger.debug(
                 LTag.PUMP,

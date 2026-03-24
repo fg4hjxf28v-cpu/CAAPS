@@ -113,11 +113,6 @@ class CarelevoPumpPlugin @Inject constructor(
     ownPreferences = listOf(CarelevoBooleanPreferenceKey::class.java, CarelevoIntPreferenceKey::class.java),
     aapsLogger, rh, preferences, commandQueue
 ), Pump {
-
-    companion object {
-    }
-
-    // region State
     private var bleReceiverDisposable: Disposable? = null
     private val pluginDisposable = CompositeDisposable()
 
@@ -125,7 +120,6 @@ class CarelevoPumpPlugin @Inject constructor(
 
     private var _pumpType: PumpType = PumpType.CAREMEDI_CARELEVO
     private val _pumpDescription = PumpDescription().fillFor(_pumpType)
-    // endregion
 
     @Inject @Named("characterTx") lateinit var txUuid: UUID
 
@@ -362,7 +356,7 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     override fun isSuspended(): Boolean {
-        val patchState = carelevoPatch.getPatchState()
+        val patchState = carelevoPatch.resolvePatchState()
         aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::isSuspended] result: $patchState")
         return patchState == PatchState.NotConnectedBooted
     }
@@ -407,9 +401,9 @@ class CarelevoPumpPlugin @Inject constructor(
     }
 
     override fun setNewBasalProfile(profile: Profile): PumpEnactResult {
-        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] setNewBasalProfile timezoneOrDSTChanged called - ${carelevoPatch.getPatchState()}")
+        aapsLogger.debug(LTag.PUMP, "[CarelevoPumpPlugin::setNewBasalProfile] setNewBasalProfile timezoneOrDSTChanged called - ${carelevoPatch.resolvePatchState()}")
         _lastDateTime = System.currentTimeMillis()
-        val result = when (carelevoPatch.getPatchState()) {
+        val result = when (carelevoPatch.resolvePatchState()) {
             is PatchState.ConnectedBooted -> {
                 updateBasalProfile(profile)
             }
@@ -454,7 +448,7 @@ class CarelevoPumpPlugin @Inject constructor(
         get() = bolusCoordinator.lastBolusAmount
 
     fun lastDataTime(): Long {
-        val patchState = carelevoPatch.getPatchState()
+        val patchState = carelevoPatch.resolvePatchState()
 
         val lastDateTime = when (patchState) {
             is PatchState.ConnectedBooted,

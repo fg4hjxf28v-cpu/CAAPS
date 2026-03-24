@@ -68,7 +68,7 @@ class CarelevoConnectionCoordinator @Inject constructor(
     fun connect(reason: String, txUuid: UUID, onLastDataUpdated: () -> Unit) {
         aapsLogger.debug(LTag.PUMP, "$LOG_PREFIX connect.start reason=$reason")
 
-        val patchState = carelevoPatch.getPatchState()
+        val patchState = carelevoPatch.resolvePatchState()
         aapsLogger.debug(LTag.PUMP, "$LOG_PREFIX connect.state reason=$reason patchState=$patchState")
 
         if (reason == "Connection needed" && patchState == PatchState.NotConnectedBooted) {

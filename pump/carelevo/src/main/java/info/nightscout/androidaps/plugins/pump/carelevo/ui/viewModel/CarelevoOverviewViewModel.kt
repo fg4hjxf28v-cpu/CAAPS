@@ -374,7 +374,7 @@ class CarelevoOverviewViewModel @Inject constructor(
     }
 
     private fun resolvePumpStopResumeEvent(): CarelevoOverviewEvent {
-        return when (carelevoPatch.getPatchState()) {
+        return when (carelevoPatch.resolvePatchState()) {
             is PatchState.NotConnectedNotBooting -> {
                 CarelevoOverviewEvent.ShowMessageCarelevoIsNotConnected
             }

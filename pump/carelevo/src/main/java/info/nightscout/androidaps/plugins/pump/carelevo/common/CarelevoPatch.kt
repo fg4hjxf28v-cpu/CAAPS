@@ -173,7 +173,7 @@ class CarelevoPatch @Inject constructor(
         return patchInfo.value?.getOrNull()?.address
     }
 
-    fun getPatchState(): PatchState {
+    fun resolvePatchState(): PatchState {
         val isPatchValid = patchInfo.value?.getOrNull()?.let { true } ?: false
         val isPeripheralConnected = btState.value?.getOrNull()?.isPeripheralConnected() ?: false
 
@@ -211,7 +211,7 @@ class CarelevoPatch @Inject constructor(
             aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::changeState] btAvailable : $btAvailable")
             aapsLogger.debug(LTag.PUMP, "[CarelevoPatchRx::changeState] btPeripheralConnected : $btPeripheralConnected")
 
-            var result = getPatchState()
+            var result = resolvePatchState()
             if (result == PatchState.ConnectedBooted) {
                 if (btAvailable == false) {
                     result = PatchState.NotConnectedBooted
