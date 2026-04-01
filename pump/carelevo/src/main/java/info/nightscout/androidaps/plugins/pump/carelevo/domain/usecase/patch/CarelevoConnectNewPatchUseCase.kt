@@ -28,6 +28,9 @@ import info.nightscout.androidaps.plugins.pump.carelevo.ext.convertHexToByteArra
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.kotlin.ofType
 import io.reactivex.rxjava3.schedulers.Schedulers
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -40,6 +43,7 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
     companion object {
         private const val PATCH_INFO_ROUND_RETRY_COUNT = 2
         private const val PATCH_EVENT_TIMEOUT_SEC = 10L
+        private val BOOT_DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMMddHHmm")
     }
 
     fun execute(request: CarelevoUseCaseRequest): Single<ResponseResult<CarelevoUseCaseResponse>> {
@@ -179,6 +183,7 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
                         manufactureNumber = serial,
                         firmwareVersion = finalPatchDetail.firmwareVer,
                         bootDateTime = finalPatchDetail.bootDateTime,
+                        bootDateTimeUtcMillis = parseBootDateTimeUtcMillis(finalPatchDetail.bootDateTime),
                         modelName = finalPatchDetail.modelName,
                         insulinAmount = request.volume,
                         insulinRemain = request.volume.toDouble(),
@@ -234,5 +239,18 @@ class CarelevoConnectNewPatchUseCase @Inject constructor(
         return range.run {
             (Math.random() * (endInclusive - start + 1) + start).toInt()
         }
+    }
+
+    private fun parseBootDateTimeUtcMillis(raw: String?): Long? {
+        if (raw.isNullOrBlank()) {
+            return null
+        }
+
+        return runCatching {
+            LocalDateTime.parse(raw, BOOT_DATE_TIME_FORMATTER)
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        }.getOrNull()
     }
 }

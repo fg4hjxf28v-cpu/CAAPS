@@ -50,7 +50,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.joda.time.DateTime
 import java.math.RoundingMode
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
@@ -213,7 +215,7 @@ class CarelevoOverviewViewModel @Inject constructor(
 
     private fun buildUi(info: CarelevoPatchInfoDomainModel): CarelevoOverviewUiModel {
         aapsLogger.debug(LTag.PUMP, "[CarelevoOverviewViewModel::buildUi] info : $info")
-        val bootLdt = parseBootDateTime(info.bootDateTime)
+        val bootLdt = parseBootDateTime(info.bootDateTimeUtcMillis) ?: parseBootDateTime(info.bootDateTime)
         val bootUi = bootLdt?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) ?: ""
 
         val infusedBasal = (info.infusedTotalBasalAmount ?: 0.0)
@@ -627,6 +629,16 @@ class CarelevoOverviewViewModel @Inject constructor(
             e.printStackTrace()
             null
         }
+    }
+
+    fun parseBootDateTime(utcMillis: Long?): LocalDateTime? {
+        if (utcMillis == null) {
+            return null
+        }
+
+        return runCatching {
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(utcMillis), ZoneId.systemDefault())
+        }.getOrNull()
     }
 
     private fun onDisconnectValue() {

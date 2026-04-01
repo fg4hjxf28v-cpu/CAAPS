@@ -10,6 +10,7 @@ data class CarelevoPatchInfoDomainModel(
     val manufactureNumber: String? = null,
     val firmwareVersion: String? = null,
     val bootDateTime: String? = null,
+    val bootDateTimeUtcMillis: Long? = null,
     val modelName: String? = null,
     val insulinAmount: Int? = null,
     val insulinRemain: Double? = null,

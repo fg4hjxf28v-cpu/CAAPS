@@ -52,7 +52,7 @@ class CarelevoConnectionCoordinator @Inject constructor(
         val address = carelevoPatch.patchInfo.value?.getOrNull()?.address?.uppercase()
         aapsLogger.debug(LTag.PUMP, "$LOG_PREFIX isInitialized.check address=$address")
         if (address == null) return false
-        forceQueueClear()
+        //forceQueueClear()
         return carelevoPatch.isBleConnectedNow(address)
     }
 
